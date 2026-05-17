@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>财务排雷检阅台</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>财务排雷检阅台</h1>
+        <p id="subtitle">优先读取 data/screening/dual_track_investable_all_ai_quality_all.csv；找不到时回退到小样本结果</p>
+      </div>
+      <div class="actions">
+        <label class="dataset-picker">
+          结果表
+          <select id="datasetSelect"></select>
+        </label>
+        <button id="resetFilters" type="button">重置筛选</button>
+        <a id="downloadCsv" href="../data/screening/dual_track_investable_all_ai_quality_all.csv" download>下载双轨 CSV</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" id="summaryCards"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>稳定性测试</h2>
+          <span id="reportStatus">加载中</span>
+        </div>
+        <div class="report-grid" id="reportGrid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>分布概览</h2>
+          <span id="visibleCount"></span>
+        </div>
+        <div class="charts">
+          <div>
+            <h3>筛选结果</h3>
+            <div id="resultBars" class="bars"></div>
+          </div>
+          <div>
+            <h3>数据质量</h3>
+            <div id="qualityBars" class="bars"></div>
+          </div>
+          <div>
+            <h3>行业模型</h3>
+            <div id="industryBars" class="bars"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>股票明细</h2>
+          <span>点击表头可排序</span>
+        </div>
+        <div class="filters">
+          <label>
+            搜索
+            <input id="searchInput" type="search" placeholder="代码 / 名称 / 原因" />
+          </label>
+          <label>
+            市场
+            <select id="marketFilter"></select>
+          </label>
+          <label>
+            结果
+            <select id="resultFilter"></select>
+          </label>
+          <label>
+            数据质量
+            <select id="qualityFilter"></select>
+          </label>
+          <label>
+            行业模型
+            <select id="industryFilter"></select>
+          </label>
+          <label>
+            规则质量
+            <select id="ruleQualityFilter"></select>
+          </label>
+          <label>
+            AI评级
+            <select id="aiRatingFilter"></select>
+          </label>
+          <label>
+            分歧
+            <select id="disagreementFilter"></select>
+          </label>
+          <label>
+            最低分数
+            <input id="minScore" type="number" min="0" max="100" value="0" />
+          </label>
+          <label class="checkbox-filter">
+            <input id="aiOnlyFilter" type="checkbox" />
+            只看 AI 复核
+          </label>
+        </div>
+        <div id="traitStatus" class="trait-status" hidden>
+          <span id="traitStatusText"></span>
+          <button id="clearTraitFilter" type="button">清除特质检索</button>
+        </div>
+        <div class="table-toolbar">
+          <div>
+            <strong id="tableRange">-</strong>
+            <span id="renderHint"></span>
+          </div>
+          <div class="pager">
+            <label>
+              每页
+              <select id="pageSizeSelect">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+              </select>
+            </label>
+            <button id="prevPage" type="button">上一页</button>
+            <span id="pageStatus">1 / 1</span>
+            <button id="nextPage" type="button">下一页</button>
+          </div>
+        </div>
+        <div class="table-wrap" id="tableWrap">
+          <table id="resultsTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div id="detailOverlay" class="detail-overlay"></div>
+    <aside id="detailDrawer" class="detail-drawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <h2>股票详情</h2>
+          <p>规则排雷、规则质量与 AI 评估</p>
+        </div>
+        <button id="detailClose" type="button">关闭</button>
+      </div>
+      <div id="detailContent" class="detail-content"></div>
+    </aside>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

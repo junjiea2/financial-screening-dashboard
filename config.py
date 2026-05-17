@@ -1,0 +1,43 @@
+"""Configuration for the financial minefield screener."""
+
+HIGH_LEVERAGE_INDUSTRIES = {
+    "Bank",
+    "Banks",
+    "Insurance",
+    "Real Estate",
+    "Brokerage",
+    "Capital Markets",
+    "Financial Services",
+    "Mortgage Finance",
+}
+
+DEFAULT_THRESHOLDS = {
+    "low_pb": 1.0,
+    "five_year_loss_count_exclude": 1,
+    "five_year_negative_ocf_count_exclude": 3,
+    "ten_year_loss_count_exclude": 3,
+    "roe_volatility_warn": 0.12,
+    "net_income_cv_warn": 0.80,
+    "avg_roe_low": 0.08,
+    "avg_roe_very_low": 0.05,
+    "pe_low_return_trap": 10.0,
+    "debt_to_equity_warn": 2.0,
+    "five_year_negative_fcf_count_warn": 3,
+    "asset_liability_ratio_warn": 0.70,
+    "asset_liability_ratio_exclude": 0.85,
+    "goodwill_ratio_warn": 0.20,
+    "goodwill_ratio_exclude": 0.40,
+    "interest_coverage_warn": 3.0,
+    "interest_coverage_exclude": 1.5,
+    "revenue_cagr_warn": -0.05,
+    "revenue_cagr_exclude": -0.15,
+    "dividend_cut_warn": 0.25,
+    "pass_avg_roe_min": 0.10,
+    "pass_roe_volatility_max": 0.10,
+    "pass_asset_liability_ratio_max": 0.60,
+    "pass_revenue_cagr_min": 0.00,
+    "pass_max_five_year_loss_count": 0,
+    "pass_max_five_year_negative_ocf_count": 0,
+    "pass_min_data_years_cn": 8,
+    "pass_min_data_years_us": 3,
+}

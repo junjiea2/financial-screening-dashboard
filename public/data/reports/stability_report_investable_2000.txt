@@ -1,0 +1,71 @@
+Pipeline Stability Report
+
+US time: US_SECONDS=1907.86
+CN time: CN_SECONDS=5486.85
+
+US symbol status:
+  error: 66 (3.3%)
+  ok: 1934 (96.7%)
+  total: 2000
+  sources:
+    auto: 66 raw rows
+    yfinance: 9115 raw rows
+
+CN symbol status:
+  error: 21 (1.1%)
+  ok: 1979 (99.0%)
+  total: 2000
+  sources:
+    akshare.stock_financial_abstract: 19640 raw rows
+
+Normalized annual rows: 28719
+US missing field ratio: 47384/118300 (40.1%) across 9100 annual rows
+CN missing field ratio: 118065/255047 (46.3%) across 19619 annual rows
+
+Data quality distribution:
+  CN High: 1952
+  CN Insufficient: 1
+  CN Low: 3
+  CN Medium: 23
+  US Insufficient: 22
+  US Low: 64
+  US Medium: 1848
+
+Screening result distribution:
+  CN 排除: 790
+  CN 数据不足: 4
+  CN 警惕: 646
+  CN 通过: 539
+  US 排除: 1523
+  US 数据不足: 86
+  US 警惕: 205
+  US 通过: 83
+  US 需专项分析: 37
+
+Field missing ratios:
+  US revenue: 1643/9100 (18.1%)
+  US net_income: 1642/9100 (18.0%)
+  US operating_cash_flow: 1673/9100 (18.4%)
+  US shareholders_equity: 1605/9100 (17.6%)
+  US asset_liability_ratio: 9100/9100 (100.0%)
+  US total_assets: 1612/9100 (17.7%)
+  US total_liabilities: 1621/9100 (17.8%)
+  US capital_expenditure: 2309/9100 (25.4%)
+  US goodwill: 5166/9100 (56.8%)
+  US ebit: 2371/9100 (26.1%)
+  US interest_expense: 3133/9100 (34.4%)
+  US dividends_paid: 6409/9100 (70.4%)
+  US roe: 9100/9100 (100.0%)
+  CN revenue: 20/19619 (0.1%)
+  CN net_income: 8/19619 (0.0%)
+  CN operating_cash_flow: 8/19619 (0.0%)
+  CN shareholders_equity: 8/19619 (0.0%)
+  CN asset_liability_ratio: 0/19619 (0.0%)
+  CN total_assets: 273/19619 (1.4%)
+  CN total_liabilities: 19619/19619 (100.0%)
+  CN capital_expenditure: 19619/19619 (100.0%)
+  CN goodwill: 19619/19619 (100.0%)
+  CN ebit: 19619/19619 (100.0%)
+  CN interest_expense: 19619/19619 (100.0%)
+  CN dividends_paid: 19619/19619 (100.0%)
+  CN roe: 34/19619 (0.2%)

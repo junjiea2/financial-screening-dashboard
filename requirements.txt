@@ -1,0 +1,5 @@
+# yfinance is optional for US market data enrichment.
+yfinance>=0.2.40
+
+# akshare is optional for A-share universe and financial data adapters.
+akshare>=1.18.60
