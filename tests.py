@@ -4,6 +4,7 @@ from data_loader import load_from_csv, load_sample_universe
 from data_quality import score_data_quality
 from filters import screen_stock, screen_universe
 from indicators import revenue_cagr
+from merge_dual_track import disagreement
 from models import FinancialRecord, StockFinancials
 
 
@@ -81,10 +82,26 @@ def test_revenue_cagr_ignores_negative_endpoint() -> None:
     assert revenue_cagr(records, 3) is None
 
 
+def test_high_quality_warn_gets_contextual_observation() -> None:
+    rule_row = {
+        "结果": "警惕",
+        "规则质量评级": "优质候选",
+        "行业模型": "消费",
+        "杠杆风险": "中",
+        "数据年数": "4",
+    }
+    ai_row = {"AI评级": "优质候选"}
+    split, observation = disagreement(rule_row, ai_row)
+    assert split == "否"
+    assert "高质量消费公司需关注负债" in observation
+    assert "短历史估计" in observation
+
+
 if __name__ == "__main__":
     test_sample_results()
     test_csv_loader()
     test_us_quality_thresholds()
     test_medium_quality_is_degraded_not_blocked()
     test_revenue_cagr_ignores_negative_endpoint()
+    test_high_quality_warn_gets_contextual_observation()
     print("All tests passed.")

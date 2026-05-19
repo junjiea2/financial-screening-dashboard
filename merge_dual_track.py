@@ -29,6 +29,24 @@ def identity(row: dict[str, str]) -> str:
     return f"{row.get('市场', '')}_{row.get('股票', '')}"
 
 
+def _number(value: str) -> float | None:
+    if not value or value == "-":
+        return None
+    try:
+        return float(value.replace("%", ""))
+    except ValueError:
+        return None
+
+
+def _with_history_note(rule_row: dict[str, str], text: str) -> str:
+    data_years = _number(rule_row.get("数据年数", ""))
+    if data_years is not None and data_years < 5:
+        return f"{text}；但数据年数少于5年，长期ROE、波动和CAGR应按短历史估计降置信度"
+    if data_years is not None and data_years < 10:
+        return f"{text}；数据历史未满10年，长期质量结论仍需补充更长周期验证"
+    return text
+
+
 def disagreement(rule_row: dict[str, str], ai_row: dict[str, str] | None) -> tuple[str, str]:
     if ai_row is None:
         return "未评估", "暂无AI独立评估"
@@ -36,9 +54,27 @@ def disagreement(rule_row: dict[str, str], ai_row: dict[str, str] | None) -> tup
     mine = rule_row.get("结果", "")
     rule_quality = rule_row.get("规则质量评级", "")
     ai_rating = ai_row.get("AI评级", "")
+    industry_profile = rule_row.get("行业模型", "")
+    leverage_risk = rule_row.get("杠杆风险", "")
 
     if mine == "排除" and ai_rating in {"优质候选", "可跟踪"}:
         return "是", "规则排雷较严，AI认为可能存在继续跟踪价值"
+    if mine == "警惕" and rule_quality == "优质候选" and ai_rating == "优质候选":
+        if industry_profile == "消费" and leverage_risk in {"中", "高"}:
+            return (
+                "否",
+                _with_history_note(
+                    rule_row,
+                    "规则与AI均认可财务质量，排雷侧主要提示杠杆风险；可视为高质量消费公司需关注负债的典型情形",
+                ),
+            )
+        return (
+            "否",
+            _with_history_note(
+                rule_row,
+                "规则与AI均认可质量，排雷侧因单项风险给出需关注状态，适合进入人工复核清单",
+            ),
+        )
     if rule_quality == "优质候选" and ai_rating in {"谨慎观察", "排除"}:
         return "是", "规则质量分较高，但AI更关注风险，需要人工复核"
     if ai_rating == "优质候选" and rule_quality != "优质候选":
@@ -46,7 +82,7 @@ def disagreement(rule_row: dict[str, str], ai_row: dict[str, str] | None) -> tup
     if ai_rating == "排除" and mine != "排除":
         return "是", "AI认为质量较弱，规则侧未完全排除"
     if rule_quality == ai_rating:
-        return "否", "规则质量评级与AI评级一致"
+        return "否", _with_history_note(rule_row, "规则质量评级与AI评级一致")
     return "轻微", "规则和AI评级不完全一致，可作为人工复核优先项"
 
 

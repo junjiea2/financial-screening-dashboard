@@ -1,4 +1,4 @@
-﻿const DATASETS = [
+const DATASETS = [
   {
     label: "10496只全量双轨 + AI候选全覆盖",
     url: "./data/screening/dual_track_investable_all_ai_quality_all.csv",
@@ -99,6 +99,7 @@ const columns = [
   "10年ROE",
   "资产负债率",
   "数据年数",
+  "历史可信度",
   "数据质量分",
   "数据质量",
   "结果",
@@ -109,6 +110,27 @@ const columns = [
   "规则AI分歧",
   "详情",
 ];
+
+function resultDisplayLabel(value) {
+  if (value === "警惕") return "需关注";
+  return value || "-";
+}
+
+function historyConfidence(row) {
+  const years = Number(row["数据年数"] || 0);
+  if (years >= 10) return "A 完整历史";
+  if (years >= 5) return "B 中等历史";
+  if (years > 0) return "C 短历史";
+  return "未知";
+}
+
+function historyConfidenceNote(row) {
+  const years = Number(row["数据年数"] || 0);
+  if (years >= 10) return "已覆盖 10 年口径，长期 ROE 与波动统计可信度较高。";
+  if (years >= 5) return "覆盖 5-9 年，适合初筛，但长期质量结论仍需补充历史。";
+  if (years > 0) return "少于 5 年，10年ROE、ROE波动和CAGR应视为短历史估计。";
+  return "缺少可用年度数据。";
+}
 
 function parseCsv(text) {
   const output = [];
@@ -173,6 +195,8 @@ function prepareRows(items) {
       .toLowerCase();
     return {
       ...row,
+      "展示结果": resultDisplayLabel(row["结果"]),
+      "历史可信度": historyConfidence(row),
       _searchText: searchText,
       _score: Number(row["分数"] || 0),
       _aiReviewed: Boolean(row["AI判断"] || row["AI评级"]),
@@ -193,7 +217,7 @@ function countBy(items, key) {
   }, {});
 }
 
-function fillSelect(id, values) {
+function fillSelect(id, values, labelFn = (value) => value) {
   const select = document.getElementById(id);
   if (!select) return;
   select.innerHTML = "";
@@ -204,7 +228,7 @@ function fillSelect(id, values) {
   values.forEach((value) => {
     const option = document.createElement("option");
     option.value = value;
-    option.textContent = value;
+    option.textContent = labelFn(value);
     select.appendChild(option);
   });
 }
@@ -246,7 +270,7 @@ function renderSummary() {
 
 function barColor(label) {
   if (label === "通过" || label === "High") return "var(--ok)";
-  if (label === "警惕" || label === "Medium") return "var(--warn)";
+  if (label === "警惕" || label === "需关注" || label === "Medium") return "var(--warn)";
   if (label === "排除") return "var(--danger)";
   return "var(--accent-2)";
 }
@@ -268,7 +292,7 @@ function renderBars(id, counts) {
 }
 
 function renderCharts() {
-  renderBars("resultBars", countBy(filteredRows, "结果"));
+  renderBars("resultBars", countBy(filteredRows, "展示结果"));
   renderBars("qualityBars", countBy(filteredRows, "数据质量"));
   renderBars("industryBars", countBy(filteredRows, "行业模型"));
 }
@@ -300,7 +324,7 @@ function valueOf(row, key) {
 
 function renderBadge(value) {
   if (!value) return "-";
-  return `<span class="pill ${pillClass(value)}">${escapeHtml(value)}</span>`;
+  return `<span class="pill ${pillClass(value)}">${escapeHtml(resultDisplayLabel(value))}</span>`;
 }
 
 function detailAction(label, action, value) {
@@ -348,7 +372,7 @@ function renderTraitStatus() {
 
 function resetFilterOptions() {
   fillSelect("marketFilter", unique("市场"));
-  fillSelect("resultFilter", unique("结果"));
+  fillSelect("resultFilter", unique("结果"), resultDisplayLabel);
   fillSelect("qualityFilter", unique("数据质量"));
   fillSelect("industryFilter", unique("行业模型"));
   fillSelect("ruleQualityFilter", unique("规则质量评级"));
@@ -433,9 +457,9 @@ function renderTable() {
           }
           const value = row[column] || "-";
           if (["结果", "规则质量评级", "AI评级", "AI判断", "规则AI分歧"].includes(column)) {
-            return `<td><span class="pill ${pillClass(value)}">${value}</span></td>`;
+            return `<td><span class="pill ${pillClass(value)}">${escapeHtml(resultDisplayLabel(value))}</span></td>`;
           }
-          return `<td>${value}</td>`;
+          return `<td>${escapeHtml(value)}</td>`;
         })
         .join("")}</tr>`;
     })
@@ -522,14 +546,17 @@ function openDetail(index) {
         ${detailItem("5年平均FCF", row["5年平均FCF"])}
         ${detailItem("资产负债率", row["资产负债率"])}
         ${detailItem("数据年数", row["数据年数"])}
+        ${detailItem("历史可信度", row["历史可信度"])}
         ${detailItem("数据质量", row["数据质量"])}
       </div>
+      ${detailText("数据可信度说明", historyConfidenceNote(row))}
     </section>
 
     <section class="detail-section">
       <h3>规则排雷</h3>
       <div class="detail-grid">
-        ${detailItem("结果", row["结果"])}
+        ${detailItem("结果", resultDisplayLabel(row["结果"]))}
+        ${detailItem("规则原始状态", row["结果"])}
         ${detailItem("分数", row["分数"])}
         ${detailItem("杠杆风险", row["杠杆风险"])}
       </div>
@@ -709,4 +736,3 @@ python -m http.server 8766</code></pre>
       : "";
   document.body.innerHTML = `<main class="panel load-error"><h1>加载失败</h1><p>${escapeHtml(error.message)}</p>${fileHelp}</main>`;
 });
-
