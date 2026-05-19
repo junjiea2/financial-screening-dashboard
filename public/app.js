@@ -111,6 +111,13 @@ const columns = [
   "详情",
 ];
 
+const columnHelp = {
+  数据质量分:
+    "衡量财务数据本身是否够完整。先统计可用完整年度：收入、净利润、ROE或股东权益、资产负债表锚点都具备才算完整年度。US：6年及以上为High，3-5年为Medium；CN：8年及以上为High，5-7年为Medium。分数按完整年度折算，数据不足会降为0。",
+  规则质量分:
+    "衡量公司财务质量，不等同于排雷结果。基础分45；数据质量High加5；ROE达到行业优秀线加22、基本线加8，低于基本线扣10；ROE稳定加8，波动或利润波动会扣分；近5年无亏损加6；经营现金流持续为正加12；自由现金流整体为正加6；资产负债率、营收增长按行业模型加减分。最后限制在0-100，并映射为优质候选、可跟踪、谨慎观察或排除。",
+};
+
 function resultDisplayLabel(value) {
   if (value === "警惕") return "需关注";
   return value || "-";
@@ -317,6 +324,39 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function renderColumnHeader(column) {
+  const help = columnHelp[column];
+  if (!help) return escapeHtml(column);
+  return `${escapeHtml(column)}<button class="help-button" type="button" data-help-key="${escapeHtml(column)}" aria-label="${escapeHtml(column)}评分说明">?</button>`;
+}
+
+function openHelp(key) {
+  const title = key || "说明";
+  const body = columnHelp[key] || "";
+  const existing = document.getElementById("helpOverlay");
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div id="helpOverlay" class="help-overlay">
+      <div class="help-popover" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <div class="help-head">
+          <h3 id="helpTitle">${escapeHtml(title)}</h3>
+          <button class="help-close" type="button" aria-label="关闭">关闭</button>
+        </div>
+        <p>${escapeHtml(body)}</p>
+      </div>
+    </div>`
+  );
+  document.querySelector(".help-close")?.addEventListener("click", closeHelp);
+  document.getElementById("helpOverlay")?.addEventListener("click", (event) => {
+    if (event.target.id === "helpOverlay") closeHelp();
+  });
+}
+
+function closeHelp() {
+  document.getElementById("helpOverlay")?.remove();
+}
+
 function valueOf(row, key) {
   const value = row[key];
   return value && value !== "-" ? value : "";
@@ -440,7 +480,7 @@ function sortRows(items) {
 function renderTable() {
   const table = document.getElementById("resultsTable");
   table.querySelector("thead").innerHTML = `<tr>${columns
-    .map((column) => `<th data-key="${column}">${column}</th>`)
+    .map((column) => `<th data-key="${escapeHtml(column)}">${renderColumnHeader(column)}</th>`)
     .join("")}</tr>`;
   const sortedRows = sortRows(filteredRows);
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
@@ -482,6 +522,12 @@ function renderTable() {
       };
       currentPage = 1;
       renderTable();
+    });
+  });
+  table.querySelectorAll(".help-button").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openHelp(button.dataset.helpKey);
     });
   });
   table.querySelectorAll(".detail-button").forEach((button) => {
@@ -716,6 +762,7 @@ function attachEvents() {
   document.getElementById("detailClose")?.addEventListener("click", closeDetail);
   document.getElementById("detailOverlay")?.addEventListener("click", closeDetail);
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeHelp();
     if (event.key === "Escape") closeDetail();
   });
 }

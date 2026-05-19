@@ -350,6 +350,68 @@ th {
   user-select: none;
 }
 
+.help-button {
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  padding: 0;
+  border-radius: 999px;
+  border-color: #94a3b8;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 14px;
+  vertical-align: super;
+}
+
+.help-button:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.help-popover {
+  width: min(560px, 94vw);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  padding: 16px;
+}
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.help-head h3 {
+  margin: 0;
+  color: var(--ink);
+}
+
+.help-close {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.help-popover p {
+  color: #334155;
+  line-height: 1.75;
+}
+
 .pill {
   display: inline-block;
   border-radius: 999px;

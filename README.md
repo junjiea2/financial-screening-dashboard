@@ -96,6 +96,8 @@ python fetch_us_financials.py --provider fmp --input classified_universe.csv --o
 
 A 股第一版用 AkShare 财务摘要接口，当前优先拿营收、净利润、ROE、资产负债率等摘要字段，商誉、利息、完整现金流、分红等更适合后续接资产负债表/现金流量表专项接口补全。
 
+当前 CN 市场的 `PE` 和 `PB` 多数为空，是因为 `fetch_cn_financials.py` 使用的是 AkShare 财务摘要接口，这个接口返回的是年报财务摘要，不包含实时或静态估值字段。A 股估值需要后续单独接行情/估值接口，再在标准化阶段补入 `pe`、`pb`。
+
 ## 数据质量阈值
 
 `data_quality.py` 会保留 `data_quality_score`，并按市场使用不同阈值：
