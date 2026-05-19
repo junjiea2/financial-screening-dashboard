@@ -12,6 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="统一A股/美股财务字段")
     parser.add_argument("--us", default="data/raw/us_financials_raw.csv")
     parser.add_argument("--cn", default="data/raw/cn_financials_raw.csv")
+    parser.add_argument("--cn-valuations", default="data/raw/cn_valuations_raw.csv")
     parser.add_argument("--output", default="data/normalized/full_financials.csv")
     return parser.parse_args()
 
@@ -67,15 +68,33 @@ def _normalize_row(row: dict[str, str]) -> dict[str, str]:
     return normalized
 
 
+def _valuation_map(path: str) -> dict[str, dict[str, str]]:
+    valuations = {}
+    for row in read_csv_rows(path):
+        if row.get("status") != "ok":
+            continue
+        symbol = row.get("symbol", "").strip().zfill(6)
+        pe = _float_text(row.get("pe"))
+        pb = _float_text(row.get("pb"))
+        if symbol and (pe or pb):
+            valuations[symbol] = {"pe": pe, "pb": pb}
+    return valuations
+
+
 def main() -> None:
     args = parse_args()
     raw_rows = read_csv_rows(args.us) + read_csv_rows(args.cn)
+    cn_valuations = _valuation_map(args.cn_valuations)
     normalized_rows = []
     seen: set[tuple[str, str, str]] = set()
     for row in raw_rows:
         if row.get("status") != "ok" or not row.get("year"):
             continue
         normalized = _normalize_row(row)
+        if normalized["market"] == "CN":
+            valuation = cn_valuations.get(normalized["symbol"].zfill(6), {})
+            normalized["pe"] = normalized["pe"] or valuation.get("pe", "")
+            normalized["pb"] = normalized["pb"] or valuation.get("pb", "")
         key = (normalized["symbol"], normalized["market"], normalized["year"])
         if key in seen:
             continue

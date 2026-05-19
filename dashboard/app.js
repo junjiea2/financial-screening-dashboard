@@ -118,6 +118,28 @@ const columnHelp = {
     "衡量公司财务质量，不等同于排雷结果。基础分45；数据质量High加5；ROE达到行业优秀线加22、基本线加8，低于基本线扣10；ROE稳定加8，波动或利润波动会扣分；近5年无亏损加6；经营现金流持续为正加12；自由现金流整体为正加6；资产负债率、营收增长按行业模型加减分。最后限制在0-100，并映射为优质候选、可跟踪、谨慎观察或排除。",
 };
 
+const columnWidths = {
+  股票: "92px",
+  市场: "58px",
+  名称: "250px",
+  行业模型: "88px",
+  PE: "70px",
+  PB: "70px",
+  "10年ROE": "96px",
+  资产负债率: "110px",
+  数据年数: "96px",
+  历史可信度: "126px",
+  数据质量分: "118px",
+  数据质量: "108px",
+  结果: "100px",
+  分数: "72px",
+  规则质量评级: "126px",
+  规则质量分: "118px",
+  AI评级: "110px",
+  规则AI分歧: "112px",
+  详情: "72px",
+};
+
 function resultDisplayLabel(value) {
   if (value === "警惕") return "需关注";
   return value || "-";
@@ -479,6 +501,13 @@ function sortRows(items) {
 
 function renderTable() {
   const table = document.getElementById("resultsTable");
+  table.querySelector("colgroup")?.remove();
+  table.insertAdjacentHTML(
+    "afterbegin",
+    `<colgroup>${columns
+      .map((column) => `<col style="width:${columnWidths[column] || "100px"}" />`)
+      .join("")}</colgroup>`
+  );
   table.querySelector("thead").innerHTML = `<tr>${columns
     .map((column) => `<th data-key="${escapeHtml(column)}">${renderColumnHeader(column)}</th>`)
     .join("")}</tr>`;
@@ -514,7 +543,8 @@ function renderTable() {
   document.getElementById("prevPage").disabled = currentPage <= 1;
   document.getElementById("nextPage").disabled = currentPage >= totalPages;
   table.querySelectorAll("th").forEach((th) => {
-    th.addEventListener("click", () => {
+    th.addEventListener("click", (event) => {
+      if (event.target.closest(".help-button")) return;
       const key = th.dataset.key;
       sortState = {
         key,

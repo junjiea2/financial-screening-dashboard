@@ -322,8 +322,9 @@ select {
 
 table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
-  min-width: 1500px;
+  min-width: 2060px;
   background: #fff;
 }
 
@@ -334,6 +335,8 @@ td {
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 tbody tr:hover {

@@ -98,6 +98,15 @@ A 股第一版用 AkShare 财务摘要接口，当前优先拿营收、净利润
 
 当前 CN 市场的 `PE` 和 `PB` 多数为空，是因为 `fetch_cn_financials.py` 使用的是 AkShare 财务摘要接口，这个接口返回的是年报财务摘要，不包含实时或静态估值字段。A 股估值需要后续单独接行情/估值接口，再在标准化阶段补入 `pe`、`pb`。
 
+可用下面的独立估值脚本补齐 A 股 `PE` / `PB`：
+
+```powershell
+python fetch_cn_valuations.py --input data/universe/investable_universe.csv --output data/raw/cn_valuations_raw.csv
+python normalize_financials.py --us data/raw/us_financials_raw_investable_all.csv --cn data/raw/cn_financials_raw_investable_all.csv --cn-valuations data/raw/cn_valuations_raw.csv --output data/normalized/full_financials_investable_all.csv
+```
+
+`fetch_cn_valuations.py` 默认使用 `ak.stock_value_em(symbol)` 逐只股票读取当前 `PE(TTM)` 和 `市净率`，并按股票代码合并到标准化年度财务行。估值是当前快照，不是每个年报年度的历史估值。也可以用 `--provider spot-em` 尝试批量行情快照接口，但该接口更容易被数据源断开连接。
+
 ## 数据质量阈值
 
 `data_quality.py` 会保留 `data_quality_score`，并按市场使用不同阈值：

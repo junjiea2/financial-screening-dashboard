@@ -6,6 +6,7 @@ from filters import screen_stock, screen_universe
 from indicators import revenue_cagr
 from merge_dual_track import disagreement
 from models import FinancialRecord, StockFinancials
+from normalize_financials import _valuation_map
 
 
 def test_sample_results() -> None:
@@ -97,6 +98,23 @@ def test_high_quality_warn_gets_contextual_observation() -> None:
     assert "短历史估计" in observation
 
 
+def test_cn_valuation_map_reads_pe_pb() -> None:
+    from pathlib import Path
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "valuations.csv"
+        path.write_text(
+            "symbol,market,name,pe,pb,source,status,error\n"
+            "000001,CN,平安银行,5.2,0.6,akshare,ok,\n"
+            "000002,CN,万科A,,,akshare,ok,\n",
+            encoding="utf-8-sig",
+        )
+        valuations = _valuation_map(str(path))
+    assert valuations["000001"] == {"pe": "5.2", "pb": "0.6"}
+    assert "000002" not in valuations
+
+
 if __name__ == "__main__":
     test_sample_results()
     test_csv_loader()
@@ -104,4 +122,5 @@ if __name__ == "__main__":
     test_medium_quality_is_degraded_not_blocked()
     test_revenue_cagr_ignores_negative_endpoint()
     test_high_quality_warn_gets_contextual_observation()
+    test_cn_valuation_map_reads_pe_pb()
     print("All tests passed.")
