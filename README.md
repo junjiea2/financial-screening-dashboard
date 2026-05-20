@@ -105,7 +105,7 @@ python fetch_cn_valuations.py --input data/universe/investable_universe.csv --ou
 python normalize_financials.py --us data/raw/us_financials_raw_investable_all.csv --cn data/raw/cn_financials_raw_investable_all.csv --cn-valuations data/raw/cn_valuations_raw.csv --output data/normalized/full_financials_investable_all.csv
 ```
 
-`fetch_cn_valuations.py` 默认使用 `ak.stock_value_em(symbol)` 逐只股票读取当前 `PE(TTM)` 和 `市净率`，并按股票代码合并到标准化年度财务行。估值是当前快照，不是每个年报年度的历史估值。也可以用 `--provider spot-em` 尝试批量行情快照接口，但该接口更容易被数据源断开连接。
+`fetch_cn_valuations.py` 默认使用东方财富批量行情快照读取当前动态 PE 和 PB，并按股票代码合并到标准化年度财务行。估值是当前快照，不是每个年报年度的历史估值。也可以用 `--provider stock-value-em` 改用 AkShare 单只股票估值接口作为备用，速度会慢很多。
 
 ## 数据质量阈值
 

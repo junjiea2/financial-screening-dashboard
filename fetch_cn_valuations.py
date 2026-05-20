@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", default="data/universe/investable_universe.csv")
     parser.add_argument("--output", default="data/raw/cn_valuations_raw.csv")
     parser.add_argument("--limit", type=int, help="最多输出多少只A股，用于小样本测试")
-    parser.add_argument("--provider", choices=["stock-value-em", "spot-em"], default="stock-value-em")
+    parser.add_argument("--provider", choices=["spot-em", "stock-value-em"], default="spot-em")
     parser.add_argument("--sleep", type=float, default=0.2, help="逐只股票模式下每只股票之间的暂停秒数")
     parser.add_argument("--resume", action="store_true", help="跳过输出文件中已有的股票")
     return parser.parse_args()
@@ -64,25 +64,67 @@ def _first_value(row: dict[str, Any], aliases: tuple[str, ...]) -> Any:
 
 
 def fetch_spot_valuations() -> list[dict[str, str]]:
-    import akshare as ak
+    import math
 
-    data = ak.stock_zh_a_spot_em()
-    if data is None or data.empty:
+    import requests
+
+    url = "https://push2delay.eastmoney.com/api/qt/clist/get"
+    params = {
+        "pn": "1",
+        "pz": "100",
+        "po": "1",
+        "np": "1",
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fltt": "2",
+        "invt": "2",
+        "fid": "f12",
+        "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
+        "fields": "f9,f12,f14,f23",
+    }
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://quote.eastmoney.com/center/gridlist.html",
+        "User-Agent": "Mozilla/5.0",
+    }
+
+    def request_page(page: int) -> dict[str, Any]:
+        params["pn"] = str(page)
+        last_error: Exception | None = None
+        for attempt in range(1, 6):
+            try:
+                response = requests.get(url, params=params, headers=headers, timeout=30)
+                response.raise_for_status()
+                return response.json()
+            except Exception as exc:
+                last_error = exc
+                time.sleep(min(2 * attempt, 8))
+        raise RuntimeError(f"failed to fetch spot valuation page {page}: {last_error}")
+
+    payload = request_page(1)
+    data = payload.get("data") or {}
+    total = int(data.get("total") or 0)
+    if total <= 0:
         raise RuntimeError("no A-share spot valuation data returned")
 
+    items = list(data.get("diff") or [])
+    page_count = math.ceil(total / int(params["pz"]))
+    for page in range(2, page_count + 1):
+        items.extend((request_page(page).get("data") or {}).get("diff") or [])
+        time.sleep(0.15)
+
     rows: list[dict[str, str]] = []
-    for item in data.to_dict("records"):
-        symbol = str(_first_value(item, ("代码", "symbol"))).strip().zfill(6)
+    for item in items:
+        symbol = str(item.get("f12", "")).strip().zfill(6)
         if not symbol or symbol == "000000":
             continue
         rows.append(
             {
                 "symbol": symbol,
                 "market": "CN",
-                "name": str(_first_value(item, ("名称", "name"))).strip(),
-                "pe": _number(_first_value(item, ("市盈率-动态", "市盈率", "PE", "pe"))),
-                "pb": _number(_first_value(item, ("市净率", "PB", "pb"))),
-                "source": "akshare.stock_zh_a_spot_em",
+                "name": str(item.get("f14", "")).strip(),
+                "pe": _number(item.get("f9")),
+                "pb": _number(item.get("f23")),
+                "source": "eastmoney.qt.clist.get",
                 "status": "ok",
                 "error": "",
             }
@@ -117,15 +159,17 @@ def main() -> None:
         for row in read_csv_rows(args.input)
         if row.get("market") == "CN" and row.get("symbol")
     ]
-    if args.limit:
-        universe = universe[: args.limit]
-
     if args.provider == "spot-em":
         wanted = {row["symbol"] for row in universe}
         rows = [row for row in fetch_spot_valuations() if not wanted or row["symbol"] in wanted]
+        if args.limit:
+            rows = rows[: args.limit]
         write_csv_rows(args.output, VALUATION_HEADERS, rows)
         print(f"Wrote {len(rows)} CN valuation rows to {args.output}")
         return
+
+    if args.limit:
+        universe = universe[: args.limit]
 
     done = set()
     if args.resume:
