@@ -18,6 +18,7 @@ REPORT_COLUMNS = [
     "名称",
     "预期类别",
     "校准通过",
+    "错误类型",
     "失败原因",
     "当前结果",
     "规则质量评级",
@@ -106,6 +107,16 @@ def get_ai_rating(row: dict[str, str] | None) -> str:
     return (row.get("AI评级") or row.get("AI判断") or "").strip()
 
 
+def error_type_for(expected: str, failures: list[str]) -> str:
+    if not failures:
+        return "pass"
+    if expected in {"高质量", "高质量样本"}:
+        return "false_negative"
+    if expected in {"高风险", "高风险样本", "争议成长", "争议样本", "争议"}:
+        return "false_positive"
+    return "unknown"
+
+
 def evaluate_case(
     calibration_row: dict[str, str],
     screening_row: dict[str, str] | None,
@@ -161,6 +172,7 @@ def evaluate_case(
         "名称": name,
         "预期类别": expected,
         "校准通过": "否" if failures else "是",
+        "错误类型": error_type_for(expected, failures),
         "失败原因": "；".join(failures) if failures else "-",
         "当前结果": current_result,
         "规则质量评级": (screening_row or {}).get("规则质量评级", ""),
@@ -203,6 +215,13 @@ def main() -> None:
     passed = sum(1 for row in report_rows if row["校准通过"] == "是")
     total = len(report_rows)
     print(f"Calibration passed {passed}/{total}; failures {total - passed}; report: {args.output}")
+    error_counts: dict[str, int] = {}
+    for row in report_rows:
+        error_counts[row["错误类型"]] = error_counts.get(row["错误类型"], 0) + 1
+    print(
+        "Error types: "
+        + ", ".join(f"{error_type}={count}" for error_type, count in sorted(error_counts.items()))
+    )
     for row in report_rows:
         if row["校准通过"] != "是":
             print(f"- {row['市场']} {row['股票']} {row['名称']}: {row['失败原因']}")

@@ -256,7 +256,24 @@ python evaluate_calibration.py `
   --output data/samples/calibration_report.csv
 ```
 
-报告会输出每个样本的 `校准通过`、`失败原因`、当前规则结果、AI评级和优质池等级。它的作用是防止好公司被严重误杀、风险公司进入核心优质池，以及争议成长股被当作长期优质公司。
+报告会输出每个样本的 `校准通过`、`错误类型`、`失败原因`、当前规则结果、AI评级和优质池等级。`错误类型` 会把未达预期的高质量样本标为 `false_negative`，把高风险/争议样本排得过高标为 `false_positive`。它的作用是防止好公司被严重误杀、风险公司进入核心优质池，以及争议成长股被当作长期优质公司。
+
+## 优质池审计
+
+`audit_quality_pool.py` 用来回答系统性偏好和封顶问题：
+
+```powershell
+python audit_quality_pool.py `
+  --quality-pool public/data/screening/quality_pool_investable_all.csv `
+  --calibration-report data/samples/calibration_report.csv `
+  --output-dir public/data/reports
+```
+
+它会生成三张表：
+
+- `quality_pool_distribution.csv`：按市场、行业模型、优质池等级和历史可信度统计数量，并给出平均分、AI覆盖、短历史封顶数量。
+- `capped_quality_candidates.csv`：列出规则质量分较高或 AI 认可、但没有进入核心优质池的候选，包含基础理论分、去短历史封顶分、当前分和封顶原因。
+- `calibration_error_summary.csv`：汇总校准样本里的 `pass / false_negative / false_positive` 数量。
 
 ## 可选真实数据源
 

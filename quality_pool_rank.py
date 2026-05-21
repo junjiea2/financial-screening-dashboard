@@ -180,6 +180,80 @@ def entry_sources(row: dict[str, str]) -> list[str]:
     return sources
 
 
+def base_component_score(row: dict[str, str]) -> float:
+    rule_quality = number(row.get("规则质量分"), default=0)
+    rule_screen = number(row.get("分数"), default=0)
+    data_quality = number(row.get("数据质量分"), default=0)
+    ai_rating = row.get("AI评级") or row.get("AI判断") or ""
+    ai_score = AI_RATING_SCORE.get(ai_rating, 52 if not ai_rating else 35)
+    return (
+        rule_quality * 0.30
+        + ai_score * 0.15
+        + rule_screen * 0.10
+        + data_quality * 0.10
+        + score_roe(row) * 0.12
+        + score_stability(row) * 0.08
+        + score_cashflow(row) * 0.06
+        + score_debt(row) * 0.04
+        + score_growth(row) * 0.03
+        + score_valuation(row) * 0.02
+    )
+
+
+def adjusted_score(row: dict[str, str], include_short_history_cap: bool = True) -> tuple[float, list[str], bool]:
+    score = base_component_score(row)
+    penalties: list[str] = []
+    short_history_cap_applied = False
+    data_years = number(row.get("数据年数"), default=0)
+    if include_short_history_cap and data_years and data_years < 5:
+        short_history_cap_applied = score > 78
+        score = min(score, 78)
+        penalties.append("短历史封顶")
+    if row.get("结果") == "警惕":
+        score -= 4
+        penalties.append("排雷需关注")
+    if row.get("结果") == "排除":
+        score = min(score - 12, 68)
+        penalties.append("规则排除高争议")
+    if row.get("规则AI分歧") == "是":
+        score -= 3
+        penalties.append("规则AI分歧")
+    return bounded(score), penalties, short_history_cap_applied
+
+
+def level_from_score(row: dict[str, str], score: float) -> str:
+    ai_positive = (row.get("AI评级") or row.get("AI判断")) in POSITIVE_AI_RATINGS
+    if row.get("结果") == "排除" and ai_positive:
+        return "高争议池"
+    if score >= 88:
+        return "核心优质池"
+    if score >= 78:
+        return "优质池"
+    if score >= 68:
+        return "可研究池"
+    return "观察池"
+
+
+def score_details(row: dict[str, str]) -> dict[str, object]:
+    score, penalties, short_history_cap_applied = adjusted_score(row)
+    score_without_short, _, _ = adjusted_score(row, include_short_history_cap=False)
+    base_score = bounded(base_component_score(row))
+    rounded_score = round(score, 1)
+    rounded_score_without_short = round(score_without_short, 1)
+    return {
+        "基础理论分": round(base_score, 1),
+        "去短历史封顶分": rounded_score_without_short,
+        "去短历史封顶等级": level_from_score(row, rounded_score_without_short),
+        "最终分": rounded_score,
+        "最终等级": level_from_score(row, rounded_score),
+        "风险扣分": penalties,
+        "短历史封顶生效": short_history_cap_applied,
+        "短历史受限": bool(number(row.get("数据年数"), default=0) and number(row.get("数据年数"), default=0) < 5),
+        "排雷状态扣分": row.get("结果") in {"警惕", "排除"},
+        "规则AI分歧扣分": row.get("规则AI分歧") == "是",
+    }
+
+
 def entry_diagnostics(row: dict[str, str], include_excluded: bool = False) -> dict[str, object]:
     sources = entry_sources(row)
     result = row.get("结果", "")
@@ -270,51 +344,11 @@ def rank_row(row: dict[str, str], include_excluded: bool = False) -> dict[str, s
     if row.get("结果") == "排除" and not (include_excluded and ai_positive):
         return None
 
-    rule_quality = number(row.get("规则质量分"), default=0)
-    rule_screen = number(row.get("分数"), default=0)
-    data_quality = number(row.get("数据质量分"), default=0)
     ai_rating = row.get("AI评级") or row.get("AI判断") or ""
-    ai_score = AI_RATING_SCORE.get(ai_rating, 52 if not ai_rating else 35)
-
-    component_score = (
-        rule_quality * 0.30
-        + ai_score * 0.15
-        + rule_screen * 0.10
-        + data_quality * 0.10
-        + score_roe(row) * 0.12
-        + score_stability(row) * 0.08
-        + score_cashflow(row) * 0.06
-        + score_debt(row) * 0.04
-        + score_growth(row) * 0.03
-        + score_valuation(row) * 0.02
-    )
-
-    penalties: list[str] = []
-    data_years = number(row.get("数据年数"), default=0)
-    if data_years and data_years < 5:
-        component_score = min(component_score, 78)
-        penalties.append("短历史封顶")
-    if row.get("结果") == "警惕":
-        component_score -= 4
-        penalties.append("排雷需关注")
-    if row.get("结果") == "排除":
-        component_score = min(component_score - 12, 68)
-        penalties.append("规则排除高争议")
-    if row.get("规则AI分歧") == "是":
-        component_score -= 3
-        penalties.append("规则AI分歧")
-
-    score = round(bounded(component_score), 1)
-    if row.get("结果") == "排除" and ai_positive:
-        level = "高争议池"
-    elif score >= 88:
-        level = "核心优质池"
-    elif score >= 78:
-        level = "优质池"
-    elif score >= 68:
-        level = "可研究池"
-    else:
-        level = "观察池"
+    details = score_details(row)
+    score = details["最终分"]
+    level = details["最终等级"]
+    penalties = details["风险扣分"]
 
     reasons = [
         f"规则质量{row.get('规则质量分', '-')}",

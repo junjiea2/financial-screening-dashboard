@@ -1,5 +1,11 @@
 """Basic smoke tests for the screener."""
 
+from audit_quality_pool import (
+    build_calibration_error_summary,
+    build_capped_candidates,
+    build_distribution,
+    history_confidence,
+)
 from data_loader import load_from_csv, load_sample_universe
 from data_quality import score_data_quality
 from evaluate_calibration import evaluate_case
@@ -9,7 +15,7 @@ from merge_dual_track import disagreement
 from merge_multi_ai_reviews import merge_reviews
 from models import FinancialRecord, StockFinancials
 from normalize_financials import _valuation_map
-from quality_pool_rank import build_quality_pool, entry_diagnostics
+from quality_pool_rank import build_quality_pool, entry_diagnostics, score_details
 
 
 def test_sample_results() -> None:
@@ -229,6 +235,80 @@ def test_quality_pool_entry_diagnostics_explains_missing_signal() -> None:
     assert "没有入选信号" in "；".join(diagnostics["阻断原因"])
 
 
+def test_quality_pool_score_details_exposes_short_history_cap() -> None:
+    row = {
+        "股票": "CAP",
+        "市场": "US",
+        "结果": "通过",
+        "分数": "100",
+        "规则质量评级": "优质候选",
+        "规则质量分": "100",
+        "AI评级": "优质候选",
+        "数据质量分": "80",
+        "数据质量": "Medium",
+        "数据年数": "4",
+        "10年ROE": "35%",
+        "ROE波动": "2%",
+        "5年平均FCF": "10000000000",
+        "资产负债率": "20%",
+        "5年营收CAGR": "12%",
+        "PE": "18",
+        "PB": "3",
+    }
+    details = score_details(row)
+    assert details["短历史封顶生效"] is True
+    assert details["最终分"] == 78
+    assert details["去短历史封顶等级"] == "核心优质池"
+
+
+def test_quality_pool_audit_reports_distribution_and_caps() -> None:
+    rows = [
+        {
+            "股票": "CAP",
+            "市场": "US",
+            "名称": "Capped",
+            "行业模型": "科技",
+            "优质池等级": "优质池",
+            "综合优质分": "78.0",
+            "结果": "通过",
+            "分数": "100",
+            "规则质量评级": "优质候选",
+            "规则质量分": "100",
+            "AI评级": "优质候选",
+            "数据质量分": "80",
+            "数据质量": "Medium",
+            "数据年数": "4",
+            "10年ROE": "35%",
+            "ROE波动": "2%",
+            "5年平均FCF": "10000000000",
+            "资产负债率": "20%",
+            "5年营收CAGR": "12%",
+            "PE": "18",
+            "PB": "3",
+            "风险扣分": "短历史封顶",
+        }
+    ]
+    distribution = build_distribution(rows)
+    capped = build_capped_candidates(rows)
+    assert history_confidence("4") == "C 短历史"
+    assert distribution[0]["短历史封顶生效数量"] == 1
+    assert distribution[0]["去短历史封顶可升核心数量"] == 1
+    assert capped[0]["是否因历史数据封顶"] == "是"
+    assert capped[0]["去短历史封顶等级"] == "核心优质池"
+
+
+def test_calibration_error_summary_groups_error_types() -> None:
+    summary = build_calibration_error_summary(
+        [
+            {"市场": "US", "股票": "AAA", "预期类别": "高质量", "错误类型": "pass"},
+            {"市场": "US", "股票": "BAD", "预期类别": "高风险", "错误类型": "false_positive"},
+        ]
+    )
+    counts = {(row["错误类型"], row["预期类别"]): row["数量"] for row in summary}
+    assert counts[("pass", "高质量")] == 1
+    assert counts[("false_positive", "高风险")] == 1
+
+
 def test_multi_ai_consensus_detects_disagreement() -> None:
     groups = {
         ("US", "XYZ"): [
@@ -249,6 +329,7 @@ def test_calibration_high_quality_requires_expected_pool_level() -> None:
         {"股票": "AAA", "市场": "US", "优质池等级": "核心优质池"},
     )
     assert report["校准通过"] == "是"
+    assert report["错误类型"] == "pass"
 
     weak_report = evaluate_case(
         {"股票": "AAA", "市场": "US", "预期类别": "高质量", "最低优质池等级": "优质池", "允许结果": "通过|警惕"},
@@ -256,6 +337,7 @@ def test_calibration_high_quality_requires_expected_pool_level() -> None:
         {"股票": "AAA", "市场": "US", "优质池等级": "观察池"},
     )
     assert weak_report["校准通过"] == "否"
+    assert weak_report["错误类型"] == "false_negative"
     assert "低于最低预期" in weak_report["失败原因"]
 
 
@@ -266,6 +348,7 @@ def test_calibration_blocks_high_risk_core_pool() -> None:
         {"股票": "BAD", "市场": "US", "优质池等级": "核心优质池"},
     )
     assert report["校准通过"] == "否"
+    assert report["错误类型"] == "false_positive"
     assert "高风险样本进入核心优质池" in report["失败原因"]
 
 
@@ -290,6 +373,9 @@ if __name__ == "__main__":
     test_cn_valuation_map_reads_pe_pb()
     test_quality_pool_ranks_any_positive_signal()
     test_quality_pool_entry_diagnostics_explains_missing_signal()
+    test_quality_pool_score_details_exposes_short_history_cap()
+    test_quality_pool_audit_reports_distribution_and_caps()
+    test_calibration_error_summary_groups_error_types()
     test_multi_ai_consensus_detects_disagreement()
     test_calibration_high_quality_requires_expected_pool_level()
     test_calibration_blocks_high_risk_core_pool()

@@ -1,0 +1,5 @@
+﻿错误类型,预期类别,数量,样本
+pass,争议成长,1,CN 688256
+pass,争议样本,1,US SPG
+pass,高质量,7,US KO；US MSFT；US AAPL；US COST；US PG；CN 600519；CN 603605
+pass,高风险,4,CN 000002；US FNKO；US AMPG；US ARKO
