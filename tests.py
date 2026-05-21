@@ -2,6 +2,7 @@
 
 from data_loader import load_from_csv, load_sample_universe
 from data_quality import score_data_quality
+from evaluate_calibration import evaluate_case
 from filters import screen_stock, screen_universe
 from indicators import revenue_cagr
 from merge_dual_track import disagreement
@@ -168,6 +169,43 @@ def test_multi_ai_consensus_detects_disagreement() -> None:
     assert "deepseek:优质候选" in merged[0]["AI评级明细"]
 
 
+def test_calibration_high_quality_requires_expected_pool_level() -> None:
+    report = evaluate_case(
+        {"股票": "AAA", "市场": "US", "预期类别": "高质量", "最低优质池等级": "优质池", "允许结果": "通过|警惕"},
+        {"股票": "AAA", "市场": "US", "结果": "通过", "规则质量评级": "优质候选", "AI评级": "优质候选"},
+        {"股票": "AAA", "市场": "US", "优质池等级": "核心优质池"},
+    )
+    assert report["校准通过"] == "是"
+
+    weak_report = evaluate_case(
+        {"股票": "AAA", "市场": "US", "预期类别": "高质量", "最低优质池等级": "优质池", "允许结果": "通过|警惕"},
+        {"股票": "AAA", "市场": "US", "结果": "通过", "规则质量评级": "优质候选", "AI评级": "优质候选"},
+        {"股票": "AAA", "市场": "US", "优质池等级": "观察池"},
+    )
+    assert weak_report["校准通过"] == "否"
+    assert "低于最低预期" in weak_report["失败原因"]
+
+
+def test_calibration_blocks_high_risk_core_pool() -> None:
+    report = evaluate_case(
+        {"股票": "BAD", "市场": "US", "预期类别": "高风险", "禁止优质池等级": "核心优质池|优质池"},
+        {"股票": "BAD", "市场": "US", "结果": "排除", "规则质量评级": "排除", "AI评级": ""},
+        {"股票": "BAD", "市场": "US", "优质池等级": "核心优质池"},
+    )
+    assert report["校准通过"] == "否"
+    assert "高风险样本进入核心优质池" in report["失败原因"]
+
+
+def test_calibration_missing_high_quality_stock_fails() -> None:
+    report = evaluate_case(
+        {"股票": "MISSING", "市场": "US", "预期类别": "高质量", "最低优质池等级": "可研究池"},
+        None,
+        None,
+    )
+    assert report["校准通过"] == "否"
+    assert "筛选结果缺失" in report["失败原因"]
+
+
 if __name__ == "__main__":
     test_sample_results()
     test_csv_loader()
@@ -178,4 +216,7 @@ if __name__ == "__main__":
     test_cn_valuation_map_reads_pe_pb()
     test_quality_pool_ranks_any_positive_signal()
     test_multi_ai_consensus_detects_disagreement()
+    test_calibration_high_quality_requires_expected_pool_level()
+    test_calibration_blocks_high_risk_core_pool()
+    test_calibration_missing_high_quality_stock_fails()
     print("All tests passed.")

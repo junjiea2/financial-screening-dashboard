@@ -236,6 +236,20 @@ python quality_pool_rank.py --input data/screening/dual_track_investable_all_ai_
 
 阈值集中在 `config.py`，可以按你的投资口径调整。
 
+## 校准评估
+
+`evaluate_calibration.py` 会用固定白名单/黑名单样本检查当前筛选结果是否符合预期。样本放在 `data/samples/calibration_stocks.csv`，覆盖高质量公司、高风险公司和争议成长股：
+
+```powershell
+python evaluate_calibration.py `
+  --calibration data/samples/calibration_stocks.csv `
+  --screening public/data/screening/dual_track_investable_all_ai_quality_all.csv `
+  --quality-pool public/data/screening/quality_pool_investable_all.csv `
+  --output data/samples/calibration_report.csv
+```
+
+报告会输出每个样本的 `校准通过`、`失败原因`、当前规则结果、AI评级和优质池等级。它的作用是防止好公司被严重误杀、风险公司进入核心优质池，以及争议成长股被当作长期优质公司。
+
 ## 可选真实数据源
 
 美股基础字段可以试用：
