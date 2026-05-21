@@ -213,6 +213,27 @@ symbol,market,name,industry,pe,pb,year,revenue,net_income,operating_cash_flow,sh
 
 双轨合并脚本 `merge_dual_track.py` 会把规则质量和 AI 评级放在一起观察。对于 `规则质量评级=优质候选` 且 `AI评级=优质候选`，但排雷结果因杠杆等单项指标进入 `需关注` 的公司，综合观察会保留质量判断，同时说明需要复核的风险点；消费行业高质量公司会被单独解释为“高质量消费公司需关注负债”的典型情形。
 
+`merge_multi_ai_reviews.py` 用于后续多 AI 交叉复核。它不直接调用模型，而是把不同模型各自生成的 AI 评估 CSV 合并成 `AI共识评级 / AI共识度 / AI分歧状态 / AI评级明细`：
+
+```powershell
+python merge_multi_ai_reviews.py `
+  --input deepseek=data/ai/ai_independent_candidates_quality_all.csv `
+  --input openai=data/ai/ai_independent_candidates_openai.csv `
+  --output data/ai/multi_ai_consensus.csv
+```
+
+这样可以先把“多 AI 分歧”变成结构化信号，再决定哪些股票需要更深入的人工或 AI 研究。
+
+## 优质池排序
+
+`quality_pool_rank.py` 会从任一轨道看好的股票里继续筛更优质的一层：
+
+```powershell
+python quality_pool_rank.py --input data/screening/dual_track_investable_all_ai_quality_all.csv --output data/screening/quality_pool_investable_all.csv
+```
+
+入选信号包括：规则结果为 `通过`、规则质量评级为 `优质候选/可跟踪`、AI评级为 `优质候选/可跟踪`。排序分综合考虑规则质量分、规则排雷分、AI评级、数据质量、长期ROE、ROE稳定性、自由现金流、负债率、营收增长和估值。输出的 `综合优质分` 用于在“已经不差”的公司里继续排优先级，不是买卖建议。
+
 阈值集中在 `config.py`，可以按你的投资口径调整。
 
 ## 可选真实数据源

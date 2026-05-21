@@ -5,8 +5,10 @@ from data_quality import score_data_quality
 from filters import screen_stock, screen_universe
 from indicators import revenue_cagr
 from merge_dual_track import disagreement
+from merge_multi_ai_reviews import merge_reviews
 from models import FinancialRecord, StockFinancials
 from normalize_financials import _valuation_map
+from quality_pool_rank import build_quality_pool
 
 
 def test_sample_results() -> None:
@@ -115,6 +117,57 @@ def test_cn_valuation_map_reads_pe_pb() -> None:
     assert "000002" not in valuations
 
 
+def test_quality_pool_ranks_any_positive_signal() -> None:
+    rows = [
+        {
+            "股票": "AAA",
+            "市场": "US",
+            "结果": "通过",
+            "分数": "100",
+            "规则质量评级": "优质候选",
+            "规则质量分": "95",
+            "AI评级": "优质候选",
+            "数据质量分": "100",
+            "数据质量": "High",
+            "数据年数": "10",
+            "10年ROE": "20%",
+            "ROE波动": "3%",
+            "5年平均FCF": "100",
+            "资产负债率": "25%",
+            "5年营收CAGR": "8%",
+            "PE": "18",
+            "PB": "3",
+            "规则AI分歧": "否",
+        },
+        {
+            "股票": "BBB",
+            "市场": "US",
+            "结果": "排除",
+            "分数": "0",
+            "规则质量评级": "排除",
+            "规则质量分": "20",
+            "AI评级": "",
+        },
+    ]
+    pool = build_quality_pool(rows)
+    assert [row["股票"] for row in pool] == ["AAA"]
+    assert pool[0]["优质池等级"] == "核心优质池"
+    assert "规则通过" in pool[0]["入选来源"]
+
+
+def test_multi_ai_consensus_detects_disagreement() -> None:
+    groups = {
+        ("US", "XYZ"): [
+            ("deepseek", {"市场": "US", "股票": "XYZ", "名称": "Example", "AI评级": "优质候选"}),
+            ("openai", {"市场": "US", "股票": "XYZ", "名称": "Example", "AI评级": "排除"}),
+        ]
+    }
+    merged = merge_reviews(groups)
+    assert merged[0]["AI复核模型数"] == "2"
+    assert merged[0]["AI分歧状态"] == "明显分歧"
+    assert "deepseek:优质候选" in merged[0]["AI评级明细"]
+
+
 if __name__ == "__main__":
     test_sample_results()
     test_csv_loader()
@@ -123,4 +176,6 @@ if __name__ == "__main__":
     test_revenue_cagr_ignores_negative_endpoint()
     test_high_quality_warn_gets_contextual_observation()
     test_cn_valuation_map_reads_pe_pb()
+    test_quality_pool_ranks_any_positive_signal()
+    test_multi_ai_consensus_detects_disagreement()
     print("All tests passed.")

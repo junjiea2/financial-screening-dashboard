@@ -1,5 +1,10 @@
 const DATASETS = [
   {
+    label: "优质池排序（任一轨道看好）",
+    url: "./data/screening/quality_pool_investable_all.csv",
+    reportUrl: "./data/reports/stability_report_investable_all.txt",
+  },
+  {
     label: "10496只全量双轨 + AI候选全覆盖",
     url: "./data/screening/dual_track_investable_all_ai_quality_all.csv",
     reportUrl: "./data/reports/stability_report_investable_all.txt",
@@ -89,7 +94,7 @@ const traitFilters = {
   },
 };
 
-const columns = [
+const baseColumns = [
   "股票",
   "市场",
   "名称",
@@ -110,6 +115,8 @@ const columns = [
   "规则AI分歧",
   "详情",
 ];
+
+const optionalColumns = ["综合优质分", "优质池等级", "入选来源"];
 
 const columnHelp = {
   数据质量分:
@@ -133,6 +140,9 @@ const columnWidths = {
   数据质量: "108px",
   结果: "100px",
   分数: "72px",
+  综合优质分: "110px",
+  优质池等级: "112px",
+  入选来源: "180px",
   规则质量评级: "126px",
   规则质量分: "118px",
   AI评级: "110px",
@@ -384,6 +394,13 @@ function valueOf(row, key) {
   return value && value !== "-" ? value : "";
 }
 
+function tableColumns() {
+  const available = new Set(rows.flatMap((row) => Object.keys(row)));
+  const detailless = baseColumns.filter((column) => column !== "详情");
+  const extras = optionalColumns.filter((column) => available.has(column));
+  return [...detailless, ...extras, "详情"];
+}
+
 function renderBadge(value) {
   if (!value) return "-";
   return `<span class="pill ${pillClass(value)}">${escapeHtml(resultDisplayLabel(value))}</span>`;
@@ -451,7 +468,9 @@ async function loadDataset(datasetIndex = 0) {
   rows = prepareRows(parseCsv(await response.text()));
   filteredRows = rows;
   currentPage = 1;
-  sortState = { key: "分数", direction: "asc" };
+  sortState = rows.some((row) => row["综合优质分"])
+    ? { key: "综合优质分", direction: "desc" }
+    : { key: "分数", direction: "asc" };
   resetFilterInputs();
   resetFilterOptions();
   applyFilters();
@@ -501,14 +520,15 @@ function sortRows(items) {
 
 function renderTable() {
   const table = document.getElementById("resultsTable");
+  const activeColumns = tableColumns();
   table.querySelector("colgroup")?.remove();
   table.insertAdjacentHTML(
     "afterbegin",
-    `<colgroup>${columns
+    `<colgroup>${activeColumns
       .map((column) => `<col style="width:${columnWidths[column] || "100px"}" />`)
       .join("")}</colgroup>`
   );
-  table.querySelector("thead").innerHTML = `<tr>${columns
+  table.querySelector("thead").innerHTML = `<tr>${activeColumns
     .map((column) => `<th data-key="${escapeHtml(column)}">${renderColumnHeader(column)}</th>`)
     .join("")}</tr>`;
   const sortedRows = sortRows(filteredRows);
@@ -519,7 +539,7 @@ function renderTable() {
   detailRows = displayRows;
   table.querySelector("tbody").innerHTML = displayRows
     .map((row, index) => {
-      return `<tr>${columns
+      return `<tr>${activeColumns
         .map((column) => {
           if (column === "详情") {
             return `<td><button class="detail-button" type="button" data-index="${index}">详情</button></td>`;
@@ -627,6 +647,21 @@ function openDetail(index) {
       </div>
       ${detailText("数据可信度说明", historyConfidenceNote(row))}
     </section>
+
+    ${
+      valueOf(row, "综合优质分")
+        ? `<section class="detail-section">
+            <h3>优质池排序</h3>
+            <div class="detail-grid">
+              ${detailItem("综合优质分", row["综合优质分"])}
+              ${detailItem("优质池等级", row["优质池等级"])}
+              ${detailItem("入选来源", row["入选来源"])}
+              ${detailItem("风险扣分", row["风险扣分"])}
+            </div>
+            ${detailText("排序理由", valueOf(row, "优质排序理由"))}
+          </section>`
+        : ""
+    }
 
     <section class="detail-section">
       <h3>规则排雷</h3>
