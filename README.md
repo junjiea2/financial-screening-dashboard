@@ -234,6 +234,14 @@ python quality_pool_rank.py --input data/screening/dual_track_investable_all_ai_
 
 入选信号包括：规则结果为 `通过`、规则质量评级为 `优质候选/可跟踪`、AI评级为 `优质候选/可跟踪`。排序分综合考虑规则质量分、规则排雷分、AI评级、数据质量、长期ROE、ROE稳定性、自由现金流、负债率、营收增长和估值。输出的 `综合优质分` 用于在“已经不差”的公司里继续排优先级，不是买卖建议。
 
+单股没有进入优质池时，可以用 debug 模式查看阻断字段：
+
+```powershell
+python quality_pool_rank.py --input data/screening/dual_track_investable_all_ai_quality_all.csv --debug-symbol AAPL --debug-market US
+```
+
+科技行业里，系统会对高ROE、强自由现金流、无亏损且经营现金流持续为正的成熟科技现金流龙头做质量校准：PB、ROE波动和偏高负债率会保留为风险关注项，但不会自动覆盖现金流质量判断。
+
 阈值集中在 `config.py`，可以按你的投资口径调整。
 
 ## 校准评估

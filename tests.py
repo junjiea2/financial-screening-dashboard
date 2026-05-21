@@ -9,7 +9,7 @@ from merge_dual_track import disagreement
 from merge_multi_ai_reviews import merge_reviews
 from models import FinancialRecord, StockFinancials
 from normalize_financials import _valuation_map
-from quality_pool_rank import build_quality_pool
+from quality_pool_rank import build_quality_pool, entry_diagnostics
 
 
 def test_sample_results() -> None:
@@ -75,6 +75,65 @@ def test_medium_quality_is_degraded_not_blocked() -> None:
     assert result.result == "通过"
     assert result.score == 85
     assert any("置信度中等" in flag for flag in result.flags)
+
+
+def test_mature_tech_cash_generator_quality_not_over_penalized() -> None:
+    records = [
+        FinancialRecord(
+            year=2022,
+            revenue=394_000_000_000,
+            net_income=99_000_000_000,
+            operating_cash_flow=122_000_000_000,
+            shareholders_equity=50_000_000_000,
+            total_assets=352_000_000_000,
+            total_liabilities=302_000_000_000,
+            capital_expenditure=-11_000_000_000,
+        ),
+        FinancialRecord(
+            year=2023,
+            revenue=383_000_000_000,
+            net_income=97_000_000_000,
+            operating_cash_flow=110_000_000_000,
+            shareholders_equity=62_000_000_000,
+            total_assets=352_000_000_000,
+            total_liabilities=290_000_000_000,
+            capital_expenditure=-11_000_000_000,
+        ),
+        FinancialRecord(
+            year=2024,
+            revenue=391_000_000_000,
+            net_income=94_000_000_000,
+            operating_cash_flow=118_000_000_000,
+            shareholders_equity=57_000_000_000,
+            total_assets=365_000_000_000,
+            total_liabilities=308_000_000_000,
+            capital_expenditure=-9_000_000_000,
+        ),
+        FinancialRecord(
+            year=2025,
+            revenue=416_000_000_000,
+            net_income=112_000_000_000,
+            operating_cash_flow=111_000_000_000,
+            shareholders_equity=74_000_000_000,
+            total_assets=359_000_000_000,
+            total_liabilities=285_000_000_000,
+            capital_expenditure=-13_000_000_000,
+        ),
+    ]
+    result = screen_stock(
+        StockFinancials(
+            symbol="CASH",
+            market="US",
+            name="Cash Machine Tech",
+            industry="Consumer Electronics",
+            pe=36,
+            pb=41,
+            records=records,
+        )
+    )
+    assert result.result == "警惕"
+    assert result.rule_quality_rating == "优质候选"
+    assert any("成熟科技现金流龙头" in flag for flag in result.quality_flags)
 
 
 def test_revenue_cagr_ignores_negative_endpoint() -> None:
@@ -156,6 +215,20 @@ def test_quality_pool_ranks_any_positive_signal() -> None:
     assert "规则通过" in pool[0]["入选来源"]
 
 
+def test_quality_pool_entry_diagnostics_explains_missing_signal() -> None:
+    diagnostics = entry_diagnostics(
+        {
+            "股票": "AAA",
+            "市场": "US",
+            "结果": "警惕",
+            "规则质量评级": "谨慎观察",
+            "AI评级": "",
+        }
+    )
+    assert diagnostics["入池"] is False
+    assert "没有入选信号" in "；".join(diagnostics["阻断原因"])
+
+
 def test_multi_ai_consensus_detects_disagreement() -> None:
     groups = {
         ("US", "XYZ"): [
@@ -211,10 +284,12 @@ if __name__ == "__main__":
     test_csv_loader()
     test_us_quality_thresholds()
     test_medium_quality_is_degraded_not_blocked()
+    test_mature_tech_cash_generator_quality_not_over_penalized()
     test_revenue_cagr_ignores_negative_endpoint()
     test_high_quality_warn_gets_contextual_observation()
     test_cn_valuation_map_reads_pe_pb()
     test_quality_pool_ranks_any_positive_signal()
+    test_quality_pool_entry_diagnostics_explains_missing_signal()
     test_multi_ai_consensus_detects_disagreement()
     test_calibration_high_quality_requires_expected_pool_level()
     test_calibration_blocks_high_risk_core_pool()

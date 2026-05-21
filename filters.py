@@ -99,6 +99,28 @@ QUALITY_PROFILES = {
 }
 
 
+def _is_mature_tech_cash_generator(
+    profile_code: str,
+    data_quality_level: str,
+    avg_roe_10y: float | None,
+    five_year_loss_count: int,
+    five_year_negative_ocf_count: int,
+    avg_free_cash_flow_5y: float | None,
+    revenue_cagr_5y: float | None,
+) -> bool:
+    return (
+        profile_code == "technology"
+        and data_quality_level in {"High", "Medium"}
+        and avg_roe_10y is not None
+        and avg_roe_10y >= 0.25
+        and five_year_loss_count == 0
+        and five_year_negative_ocf_count == 0
+        and avg_free_cash_flow_5y is not None
+        and avg_free_cash_flow_5y >= 5_000_000_000
+        and (revenue_cagr_5y is None or revenue_cagr_5y >= 0)
+    )
+
+
 def _quality_rating(score: int) -> str:
     if score >= 88:
         return "优质候选"
@@ -133,6 +155,15 @@ def rate_rule_quality(
         return "需专项分析", 45, ["行业需要专项资产质量或资本约束分析"]
 
     rules = QUALITY_PROFILES.get(profile_code, QUALITY_PROFILES["general"])
+    mature_tech_cash_generator = _is_mature_tech_cash_generator(
+        profile_code=profile_code,
+        data_quality_level=data_quality_level,
+        avg_roe_10y=avg_roe_10y,
+        five_year_loss_count=five_year_loss_count,
+        five_year_negative_ocf_count=five_year_negative_ocf_count,
+        avg_free_cash_flow_5y=avg_free_cash_flow_5y,
+        revenue_cagr_5y=revenue_cagr_5y,
+    )
     score = 45
     flags: list[str] = []
 
@@ -165,6 +196,8 @@ def rate_rule_quality(
         elif avg_roe_10y is not None and avg_roe_10y < roe_min:
             score -= 18
             flags.append("ROE不高且波动较大")
+        elif mature_tech_cash_generator:
+            flags.append("成熟科技现金流龙头ROE波动降权观察")
         elif not rules["allow_cycle"]:
             score -= 6
             flags.append("ROE波动偏大")
@@ -211,6 +244,9 @@ def rate_rule_quality(
         elif asset_liability_ratio <= debt_warn + 0.08:
             score -= 4
             flags.append("资产负债率略高但未构成硬伤")
+        elif mature_tech_cash_generator and asset_liability_ratio <= 0.82:
+            score -= 4
+            flags.append("成熟科技现金流龙头负债率需关注但现金流覆盖较强")
         else:
             score -= 12
             flags.append("资产负债率高于行业舒适区")
@@ -224,12 +260,18 @@ def rate_rule_quality(
         flags.append("营收增长达到行业较好水平")
     elif revenue_cagr_5y >= growth_min:
         flags.append("营收增长处于可接受区间")
+    elif mature_tech_cash_generator:
+        flags.append("成熟科技现金流龙头营收低速增长但仍为正")
     elif rules["allow_cycle"]:
         score -= 4
         flags.append("周期行业营收下滑，需结合行业周期位置")
     else:
         score -= 10
         flags.append("营收增长偏弱")
+
+    if mature_tech_cash_generator:
+        score += 6
+        flags.append("成熟科技现金流龙头：高ROE、强FCF、无亏损且OCF持续为正")
 
     score = max(0, min(100, score))
     return _quality_rating(score), score, flags

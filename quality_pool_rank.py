@@ -34,9 +34,11 @@ AI_RATING_SCORE = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Rank quality pool from dual-track results.")
     parser.add_argument("--input", required=True, help="Dual-track or rule screening CSV.")
-    parser.add_argument("--output", required=True, help="Quality pool ranking CSV.")
+    parser.add_argument("--output", help="Quality pool ranking CSV.")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--include-excluded", action="store_true", help="Keep rule-excluded AI positives as high-disagreement cases.")
+    parser.add_argument("--debug-symbol", help="Print quality-pool entry diagnostics for one symbol.")
+    parser.add_argument("--debug-market", help="Optional market filter for --debug-symbol, for example US or CN.")
     return parser.parse_args()
 
 
@@ -178,6 +180,86 @@ def entry_sources(row: dict[str, str]) -> list[str]:
     return sources
 
 
+def entry_diagnostics(row: dict[str, str], include_excluded: bool = False) -> dict[str, object]:
+    sources = entry_sources(row)
+    result = row.get("结果", "")
+    rule_quality = row.get("规则质量评级", "")
+    ai_rating = row.get("AI评级") or row.get("AI判断") or ""
+    blockers: list[str] = []
+
+    if not sources:
+        blockers.append(
+            "没有入选信号：结果不是通过，规则质量评级不在优质候选/可跟踪，AI评级也不在正面评级集合"
+        )
+    if result in {"数据不足", "需专项分析"}:
+        blockers.append(f"结果为{result}，优质池默认不收录")
+    ai_positive = any(source.startswith("AI") for source in sources)
+    if result == "排除" and not (include_excluded and ai_positive):
+        blockers.append("结果为排除，且没有启用可收录AI正面高争议样本的 include_excluded")
+
+    ranked = None if blockers else rank_row(row, include_excluded=include_excluded)
+    return {
+        "入池": ranked is not None,
+        "阻断原因": blockers,
+        "入选信号": sources,
+        "结果": result,
+        "规则质量评级": rule_quality,
+        "规则质量分": row.get("规则质量分", ""),
+        "AI评级": ai_rating or "-",
+        "AI模型": row.get("AI模型", ""),
+        "数据年数": row.get("数据年数", ""),
+        "数据质量": row.get("数据质量", ""),
+        "数据质量分": row.get("数据质量分", ""),
+        "行业模型": row.get("行业模型", ""),
+        "PE": row.get("PE", ""),
+        "PB": row.get("PB", ""),
+        "10年ROE": row.get("10年ROE", ""),
+        "ROE波动": row.get("ROE波动", ""),
+        "5年平均FCF": row.get("5年平均FCF", ""),
+        "资产负债率": row.get("资产负债率", ""),
+        "5年营收CAGR": row.get("5年营收CAGR", ""),
+        "质量理由": row.get("质量理由", ""),
+        "原因": row.get("原因", ""),
+        "入池结果": ranked or {},
+    }
+
+
+def print_entry_diagnostics(row: dict[str, str], include_excluded: bool = False) -> None:
+    diagnostics = entry_diagnostics(row, include_excluded=include_excluded)
+    print(f"{row.get('市场', '-')} {row.get('股票', '-')} {row.get('名称', '-')}")
+    print(f"入池: {'是' if diagnostics['入池'] else '否'}")
+    for key in [
+        "结果",
+        "规则质量评级",
+        "规则质量分",
+        "AI评级",
+        "AI模型",
+        "行业模型",
+        "数据年数",
+        "数据质量",
+        "数据质量分",
+        "PE",
+        "PB",
+        "10年ROE",
+        "ROE波动",
+        "5年平均FCF",
+        "资产负债率",
+        "5年营收CAGR",
+    ]:
+        print(f"{key}: {diagnostics.get(key, '-')}")
+    sources = diagnostics["入选信号"]
+    print(f"入选信号: {'；'.join(sources) if sources else '-'}")
+    blockers = diagnostics["阻断原因"]
+    print(f"阻断原因: {'；'.join(blockers) if blockers else '-'}")
+    ranked = diagnostics["入池结果"]
+    if isinstance(ranked, dict) and ranked:
+        print(f"综合优质分: {ranked.get('综合优质分', '-')}")
+        print(f"优质池等级: {ranked.get('优质池等级', '-')}")
+        print(f"风险扣分: {ranked.get('风险扣分', '-')}")
+    print(f"质量理由: {diagnostics.get('质量理由', '-')}")
+    print(f"原因: {diagnostics.get('原因', '-')}")
+
+
 def rank_row(row: dict[str, str], include_excluded: bool = False) -> dict[str, str] | None:
     sources = entry_sources(row)
     if not sources:
@@ -283,6 +365,25 @@ def build_quality_pool(
 def main() -> None:
     args = parse_args()
     headers, rows = read_rows(args.input)
+    if args.debug_symbol:
+        debug_symbol = args.debug_symbol.upper()
+        debug_market = (args.debug_market or "").upper()
+        matches = [
+            row
+            for row in rows
+            if row.get("股票", "").upper() == debug_symbol
+            and (not debug_market or row.get("市场", "").upper() == debug_market)
+        ]
+        if not matches:
+            market_note = f" in {debug_market}" if debug_market else ""
+            raise SystemExit(f"No row found for {debug_symbol}{market_note}")
+        for row in matches:
+            print_entry_diagnostics(row, include_excluded=args.include_excluded)
+        if not args.output:
+            return
+
+    if not args.output:
+        raise SystemExit("--output is required unless --debug-symbol is used")
     ranked = build_quality_pool(rows, include_excluded=args.include_excluded)
     if args.limit:
         ranked = ranked[: args.limit]
