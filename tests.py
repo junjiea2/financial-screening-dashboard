@@ -6,15 +6,17 @@ from audit_quality_pool import (
     build_distribution,
     history_confidence,
 )
+from audit_us_history_coverage import build_coverage_report
 from data_loader import load_from_csv, load_sample_universe
 from data_quality import score_data_quality
 from evaluate_calibration import evaluate_case
+from fetch_us_financials import _rows_from_sec_companyfacts
 from filters import screen_stock, screen_universe
 from indicators import revenue_cagr
 from merge_dual_track import disagreement
 from merge_multi_ai_reviews import merge_reviews
 from models import FinancialRecord, StockFinancials
-from normalize_financials import _valuation_map
+from normalize_financials import _valuation_map, normalize_financial_rows
 from quality_pool_rank import build_quality_pool, entry_diagnostics, score_details
 
 
@@ -181,6 +183,128 @@ def test_cn_valuation_map_reads_pe_pb() -> None:
         valuations = _valuation_map(str(path))
     assert valuations["000001"] == {"pe": "5.2", "pb": "0.6"}
     assert "000002" not in valuations
+
+
+def test_us_normalization_preserves_10_year_history() -> None:
+    raw_rows = [
+        {
+            "symbol": "TENY",
+            "market": "US",
+            "name": "Ten Year",
+            "industry": "Software",
+            "year": str(2016 + index),
+            "pe": "20",
+            "pb": "4",
+            "revenue": "100",
+            "net_income": "10",
+            "operating_cash_flow": "15",
+            "shareholders_equity": "50",
+            "total_assets": "100",
+            "total_liabilities": "40",
+            "capital_expenditure": "5",
+            "source": "sec",
+            "status": "ok",
+        }
+        for index in range(10)
+    ]
+    normalized = normalize_financial_rows(raw_rows, [])
+    assert len(normalized) == 10
+    assert normalized[0]["year"] == "2016"
+    assert normalized[-1]["year"] == "2025"
+    assert all(row["free_cash_flow"] == "10.0" for row in normalized)
+
+
+def test_us_normalization_prefers_more_complete_duplicate_year() -> None:
+    yfinance_row = {
+        "symbol": "DUP",
+        "market": "US",
+        "name": "Duplicate",
+        "year": "2024",
+        "revenue": "100",
+        "net_income": "",
+        "source": "yfinance",
+        "status": "ok",
+    }
+    sec_row = {
+        "symbol": "DUP",
+        "market": "US",
+        "name": "Duplicate",
+        "year": "2024",
+        "revenue": "100",
+        "net_income": "20",
+        "operating_cash_flow": "30",
+        "shareholders_equity": "80",
+        "total_assets": "120",
+        "total_liabilities": "40",
+        "source": "sec",
+        "status": "ok",
+    }
+    normalized = normalize_financial_rows([yfinance_row, sec_row], [])
+    assert len(normalized) == 1
+    assert normalized[0]["net_income"] == "20.0"
+    assert normalized[0]["operating_cash_flow"] == "30.0"
+
+
+def test_sec_companyfacts_extracts_annual_rows() -> None:
+    facts = {
+        "entityName": "Example Inc.",
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {
+                        "USD": [
+                            {"fy": 2024, "fp": "FY", "form": "10-K", "filed": "2025-01-01", "val": 120},
+                            {"fy": 2023, "fp": "FY", "form": "10-K", "filed": "2024-01-01", "val": 100},
+                        ]
+                    }
+                },
+                "NetIncomeLoss": {"units": {"USD": [{"fy": 2024, "fp": "FY", "form": "10-K", "val": 20}]}},
+                "Assets": {"units": {"USD": [{"fy": 2024, "fp": "FY", "form": "10-K", "val": 200}]}},
+                "Liabilities": {"units": {"USD": [{"fy": 2024, "fp": "FY", "form": "10-K", "val": 80}]}},
+                "StockholdersEquity": {"units": {"USD": [{"fy": 2024, "fp": "FY", "form": "10-K", "val": 120}]}},
+                "NetCashProvidedByUsedInOperatingActivities": {
+                    "units": {"USD": [{"fy": 2024, "fp": "FY", "form": "10-K", "val": 30}]}
+                },
+                "PaymentsToAcquirePropertyPlantAndEquipment": {
+                    "units": {"USD": [{"fy": 2024, "fp": "FY", "form": "10-K", "val": 5}]}
+                },
+            }
+        },
+    }
+    rows = _rows_from_sec_companyfacts(
+        {"symbol": "EX", "name": "", "industry": "Software"},
+        facts,
+        years=10,
+    )
+    assert [row["year"] for row in rows] == [2024, 2023]
+    assert rows[0]["source"] == "sec"
+    assert rows[0]["revenue"] == 120.0
+    assert rows[0]["capital_expenditure"] == 5.0
+
+
+def test_us_history_coverage_reports_short_history() -> None:
+    raw_rows = [
+        {"symbol": "SHORT", "market": "US", "year": "2024", "source": "yfinance", "status": "ok"},
+        {"symbol": "SHORT", "market": "US", "year": "2023", "source": "yfinance", "status": "ok"},
+    ]
+    normalized_rows = [
+        {
+            "symbol": "SHORT",
+            "market": "US",
+            "name": "Short History",
+            "industry": "Software",
+            "year": "2024",
+            "revenue": "100",
+            "net_income": "10",
+            "shareholders_equity": "50",
+            "total_assets": "100",
+            "total_liabilities": "40",
+        }
+    ]
+    report = build_coverage_report(raw_rows, normalized_rows)
+    assert report[0]["完整年份数"] == 1
+    assert report[0]["历史可信度"] == "C 短历史"
+    assert report[0]["需补历史"] == "是"
 
 
 def test_quality_pool_ranks_any_positive_signal() -> None:
@@ -371,6 +495,10 @@ if __name__ == "__main__":
     test_revenue_cagr_ignores_negative_endpoint()
     test_high_quality_warn_gets_contextual_observation()
     test_cn_valuation_map_reads_pe_pb()
+    test_us_normalization_preserves_10_year_history()
+    test_us_normalization_prefers_more_complete_duplicate_year()
+    test_sec_companyfacts_extracts_annual_rows()
+    test_us_history_coverage_reports_short_history()
     test_quality_pool_ranks_any_positive_signal()
     test_quality_pool_entry_diagnostics_explains_missing_signal()
     test_quality_pool_score_details_exposes_short_history_cap()

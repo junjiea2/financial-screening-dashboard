@@ -85,14 +85,29 @@ python fetch_cn_financials.py --input investable_universe.csv --output cn_financ
 
 建议分批跑 `500 -> 2000 -> 5000 -> 全量 investable_universe`。最后全量时去掉 `--limit`。两个采集脚本都会把失败原因写入 raw CSV，并支持 `--resume` 跳过已处理股票。
 
-美股采集现在优先支持 Financial Modeling Prep：
+美股采集现在支持三层来源：Financial Modeling Prep、SEC companyfacts、yfinance。默认 `auto` 模式会优先使用 FMP；没有 `FMP_API_KEY` 或单只 FMP 失败时回退到 SEC；SEC 再失败才回退到 yfinance。`yfinance` 通常只能拿到约 4 年完整年报数据，SEC 更适合补 8-10 年历史。
 
 ```powershell
 $env:FMP_API_KEY="你的FMP_KEY"
 python fetch_us_financials.py --provider fmp --input classified_universe.csv --output us_financials_raw.csv --limit 20 --resume
 ```
 
-也可以使用默认 `auto` 模式：有 `FMP_API_KEY` 时优先 FMP，没有 key 或 FMP 单只失败时回退到 `yfinance`。FMP 原始 JSON 会缓存到 `cache/us_financials/`，避免重复请求和浪费额度。
+无 key 时可以直接使用 SEC：
+
+```powershell
+$env:SEC_USER_AGENT="your-app-name contact@example.com"
+python fetch_us_financials.py --provider sec --input data/universe/investable_universe.csv --output data/raw/us_financials_raw_sec.csv --years 10 --resume
+```
+
+如果是在旧 yfinance raw 文件上增量补历史，可以保留同一个输出文件，并要求已有 ok 年份少于 8 年的股票重新抓取：
+
+```powershell
+python fetch_us_financials.py --provider sec --input data/universe/investable_universe.csv --output data/raw/us_financials_raw_investable_all.csv --years 10 --resume --resume-min-ok-years 8
+```
+
+标准化阶段会在同一股票同一年出现多来源重复行时，优先保留字段更完整、来源优先级更高的行（FMP > SEC > yfinance）。
+
+FMP 和 SEC 原始 JSON 都会缓存到 `cache/us_financials/`，避免重复请求和浪费额度。SEC 请求建议设置自己的 `SEC_USER_AGENT`。
 
 A 股第一版用 AkShare 财务摘要接口，当前优先拿营收、净利润、ROE、资产负债率等摘要字段，商誉、利息、完整现金流、分红等更适合后续接资产负债表/现金流量表专项接口补全。
 
@@ -137,6 +152,17 @@ C 短历史：1-4年
 ```
 
 当历史少于 10 年时，`10年ROE`、`ROE波动`、`5年营收CAGR` 等长期指标应理解为当前可用数据下的估计，并在人工复核时补充更长周期数据。
+
+可以用覆盖率审计先找出哪些美股需要补历史：
+
+```powershell
+python audit_us_history_coverage.py `
+  --raw data/raw/us_financials_raw_investable_all.csv `
+  --normalized data/normalized/full_financials_investable_all.csv `
+  --output public/data/reports/us_history_coverage.csv
+```
+
+当前全量公开数据主要来自 yfinance，因此美股 10 年完整历史覆盖不足；补跑 SEC 或 FMP 后，应重新执行标准化、筛选、优质池和校准审计。
 
 ## SEC 研究路线
 

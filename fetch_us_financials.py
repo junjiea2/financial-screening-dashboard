@@ -3,13 +3,51 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import re
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
+import urllib.parse
+import urllib.request
 
 from csv_utils import append_csv_rows, read_csv_rows
 from fmp_client import FMPClient
 from financial_schema import RAW_FINANCIAL_HEADERS
+
+
+SEC_TICKER_URL = "https://www.sec.gov/files/company_tickers.json"
+SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+SEC_USER_AGENT = "financial-screening-dashboard/1.0 research@example.com"
+SEC_CONCEPTS = {
+    "revenue": (
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "Revenues",
+        "SalesRevenueNet",
+    ),
+    "net_income": ("NetIncomeLoss",),
+    "operating_cash_flow": ("NetCashProvidedByUsedInOperatingActivities",),
+    "shareholders_equity": (
+        "StockholdersEquity",
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    ),
+    "total_assets": ("Assets",),
+    "total_liabilities": ("Liabilities",),
+    "capital_expenditure": (
+        "PaymentsToAcquirePropertyPlantAndEquipment",
+        "PaymentsToAcquireProductiveAssets",
+    ),
+    "goodwill": ("Goodwill",),
+    "ebit": ("OperatingIncomeLoss",),
+    "interest_expense": ("InterestExpenseNonOperating", "InterestExpense"),
+    "dividends_paid": (
+        "PaymentsOfDividendsCommonStock",
+        "PaymentsOfDividends",
+        "PaymentsOfDividendsAndDividendEquivalentsOnCommonStockAndRestrictedStockUnits",
+    ),
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,12 +59,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sleep", type=float, default=0.2, help="每只股票之间的暂停秒数")
     parser.add_argument("--resume", action="store_true", help="跳过输出文件中已有的股票")
     parser.add_argument(
+        "--resume-min-ok-years",
+        type=int,
+        default=1,
+        help="resume时，只有已有ok年份数达到该值才跳过；补历史可设为8或10",
+    )
+    parser.add_argument(
         "--provider",
-        choices=["auto", "fmp", "yfinance"],
+        choices=["auto", "fmp", "sec", "yfinance"],
         default="auto",
-        help="美股数据源：auto优先FMP，失败后fallback到yfinance",
+        help="美股数据源：auto优先FMP，其次SEC，最后fallback到yfinance",
     )
     parser.add_argument("--fmp-api-key", help="FMP API key；也可用环境变量 FMP_API_KEY")
+    parser.add_argument("--sec-user-agent", help="SEC User-Agent；也可用环境变量 SEC_USER_AGENT")
     parser.add_argument("--cache-dir", default="cache/us_financials")
     parser.add_argument("--no-cache", action="store_true")
     return parser.parse_args()
@@ -64,6 +109,192 @@ def _year_from_column(column: Any) -> int | None:
             return datetime.fromisoformat(str(column)).year
         except ValueError:
             return None
+
+
+def _request_json(
+    url: str,
+    cache_path: Path,
+    user_agent: str,
+    use_cache: bool = True,
+    sleep_seconds: float = 0.2,
+) -> Any:
+    if use_cache and cache_path.exists():
+        with cache_path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    if sleep_seconds:
+        time.sleep(sleep_seconds)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": user_agent,
+            "Host": urllib.parse.urlparse(url).netloc,
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = response.read()
+    text = data.decode("utf-8")
+    payload = json.loads(text)
+    if use_cache:
+        with cache_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False)
+    return payload
+
+
+def _sec_ticker_map(
+    cache_dir: str | Path,
+    user_agent: str,
+    use_cache: bool = True,
+    sleep_seconds: float = 0.2,
+) -> dict[str, int]:
+    payload = _request_json(
+        SEC_TICKER_URL,
+        Path(cache_dir) / "sec" / "company_tickers.json",
+        user_agent,
+        use_cache=use_cache,
+        sleep_seconds=sleep_seconds,
+    )
+    return {
+        str(item.get("ticker", "")).upper(): int(item["cik_str"])
+        for item in payload.values()
+        if item.get("ticker") and item.get("cik_str")
+    }
+
+
+def _sec_fact_year(fact: dict[str, Any]) -> int | None:
+    frame = str(fact.get("frame") or "")
+    frame_match = re.fullmatch(r"CY(\d{4})", frame)
+    if frame_match:
+        return int(frame_match.group(1))
+    end = str(fact.get("end", ""))
+    if len(end) >= 4:
+        try:
+            return int(end[:4])
+        except ValueError:
+            pass
+    try:
+        return int(fact.get("fy"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_annual_sec_fact(fact: dict[str, Any]) -> bool:
+    frame = str(fact.get("frame") or "")
+    if "Q" in frame:
+        return False
+    start = fact.get("start")
+    end = fact.get("end")
+    if start and end:
+        try:
+            start_date = datetime.fromisoformat(str(start))
+            end_date = datetime.fromisoformat(str(end))
+        except ValueError:
+            return True
+        return (end_date - start_date).days >= 300
+    return True
+
+
+def _sec_values_by_year(
+    facts: dict[str, Any],
+    concepts: tuple[str, ...],
+    allowed_units: tuple[str, ...] = ("USD",),
+) -> dict[int, float]:
+    us_gaap = facts.get("facts", {}).get("us-gaap", {})
+    values: dict[int, float] = {}
+    for concept in concepts:
+        concept_values: dict[int, tuple[str, float]] = {}
+        units = us_gaap.get(concept, {}).get("units", {})
+        for unit, records in units.items():
+            if unit not in allowed_units:
+                continue
+            for fact in records:
+                if fact.get("form") not in {"10-K", "10-K/A"}:
+                    continue
+                if fact.get("fp") not in {"FY", None, ""}:
+                    continue
+                if not _is_annual_sec_fact(fact):
+                    continue
+                year = _sec_fact_year(fact)
+                if year is None or fact.get("val") in {None, ""}:
+                    continue
+                filed = str(fact.get("filed", ""))
+                parsed_value = _number(fact.get("val"))
+                if parsed_value == "":
+                    continue
+                if year not in concept_values or filed > concept_values[year][0]:
+                    concept_values[year] = (filed, float(parsed_value))
+        for year, (_, value) in concept_values.items():
+            values.setdefault(year, value)
+    return values
+
+
+def _rows_from_sec_companyfacts(
+    row: dict[str, str],
+    facts: dict[str, Any],
+    years: int,
+) -> list[dict[str, object]]:
+    values_by_field = {
+        field: _sec_values_by_year(facts, concepts)
+        for field, concepts in SEC_CONCEPTS.items()
+    }
+    all_years = sorted(
+        {year for values in values_by_field.values() for year in values},
+        reverse=True,
+    )[:years]
+    if not all_years:
+        raise RuntimeError("SEC returned no usable annual rows")
+
+    entity_name = facts.get("entityName", "")
+    output_rows: list[dict[str, object]] = []
+    for year in all_years:
+        output_rows.append(
+            {
+                "symbol": row["symbol"],
+                "market": "US",
+                "name": row.get("name") or entity_name,
+                "industry": row.get("industry", ""),
+                "year": year,
+                "pe": "",
+                "pb": "",
+                "revenue": values_by_field["revenue"].get(year, ""),
+                "net_income": values_by_field["net_income"].get(year, ""),
+                "operating_cash_flow": values_by_field["operating_cash_flow"].get(year, ""),
+                "shareholders_equity": values_by_field["shareholders_equity"].get(year, ""),
+                "total_assets": values_by_field["total_assets"].get(year, ""),
+                "total_liabilities": values_by_field["total_liabilities"].get(year, ""),
+                "capital_expenditure": values_by_field["capital_expenditure"].get(year, ""),
+                "goodwill": values_by_field["goodwill"].get(year, ""),
+                "ebit": values_by_field["ebit"].get(year, ""),
+                "interest_expense": values_by_field["interest_expense"].get(year, ""),
+                "dividends_paid": values_by_field["dividends_paid"].get(year, ""),
+                "source": "sec",
+                "status": "ok",
+            }
+        )
+    return output_rows
+
+
+def _fetch_symbol_sec(
+    row: dict[str, str],
+    years: int,
+    ticker_map: dict[str, int],
+    cache_dir: str | Path,
+    user_agent: str,
+    use_cache: bool = True,
+    sleep_seconds: float = 0.2,
+) -> list[dict[str, object]]:
+    symbol = row["symbol"].upper()
+    cik = ticker_map.get(symbol)
+    if cik is None:
+        raise RuntimeError("SEC CIK not found")
+    facts = _request_json(
+        SEC_FACTS_URL.format(cik=f"{cik:010d}"),
+        Path(cache_dir) / "sec" / "companyfacts" / f"{symbol}.json",
+        user_agent,
+        use_cache=use_cache,
+        sleep_seconds=sleep_seconds,
+    )
+    return _rows_from_sec_companyfacts(row, facts, years)
 
 
 def _fetch_symbol(row: dict[str, str], years: int) -> list[dict[str, object]]:
@@ -258,11 +489,27 @@ def main() -> None:
 
     done = set()
     if args.resume:
+        ok_years_by_symbol: dict[str, set[str]] = {}
+        skipped_symbols = set()
+        error_symbols = set()
+        for row in read_csv_rows(args.output):
+            symbol = row.get("symbol", "")
+            if not symbol:
+                continue
+            if row.get("status") == "ok" and row.get("year"):
+                ok_years_by_symbol.setdefault(symbol, set()).add(row["year"])
+            elif row.get("status") == "skipped":
+                skipped_symbols.add(symbol)
+            elif row.get("status") == "error":
+                error_symbols.add(symbol)
         done = {
-            row["symbol"]
-            for row in read_csv_rows(args.output)
-            if row.get("status") in {"ok", "error", "skipped"}
+            symbol
+            for symbol, years in ok_years_by_symbol.items()
+            if len(years) >= args.resume_min_ok_years
         }
+        done |= skipped_symbols
+        if args.resume_min_ok_years <= 1:
+            done |= error_symbols
 
     fmp_client: FMPClient | None = None
     if args.provider in {"auto", "fmp"}:
@@ -277,6 +524,21 @@ def main() -> None:
             if args.provider == "fmp":
                 raise
             print(f"[US] FMP unavailable, falling back to yfinance: {exc}")
+
+    sec_tickers: dict[str, int] | None = None
+    sec_user_agent = args.sec_user_agent or os.environ.get("SEC_USER_AGENT", SEC_USER_AGENT)
+    if args.provider in {"auto", "sec"}:
+        try:
+            sec_tickers = _sec_ticker_map(
+                args.cache_dir,
+                sec_user_agent,
+                use_cache=not args.no_cache,
+                sleep_seconds=args.sleep,
+            )
+        except Exception as exc:
+            if args.provider == "sec":
+                raise
+            print(f"[US] SEC ticker map unavailable, falling back to yfinance: {exc}")
 
     processed = 0
     for row in universe:
@@ -302,6 +564,35 @@ def main() -> None:
                         rows = _fetch_symbol_fmp(row, args.years, fmp_client)
                     except Exception:
                         if args.provider == "fmp":
+                            raise
+                        if sec_tickers is not None:
+                            try:
+                                rows = _fetch_symbol_sec(
+                                    row,
+                                    args.years,
+                                    sec_tickers,
+                                    args.cache_dir,
+                                    sec_user_agent,
+                                    use_cache=not args.no_cache,
+                                    sleep_seconds=args.sleep,
+                                )
+                            except Exception:
+                                rows = _fetch_symbol(row, args.years)
+                        else:
+                            rows = _fetch_symbol(row, args.years)
+                elif args.provider in {"auto", "sec"} and sec_tickers is not None:
+                    try:
+                        rows = _fetch_symbol_sec(
+                            row,
+                            args.years,
+                            sec_tickers,
+                            args.cache_dir,
+                            sec_user_agent,
+                            use_cache=not args.no_cache,
+                            sleep_seconds=args.sleep,
+                        )
+                    except Exception:
+                        if args.provider == "sec":
                             raise
                         rows = _fetch_symbol(row, args.years)
                 else:
