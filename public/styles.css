@@ -137,6 +137,47 @@ main {
   padding: 18px;
 }
 
+.b4-boundary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid #b7d6d2;
+  border-radius: 8px;
+  background: #f4fbfa;
+  color: #0f5f59;
+}
+
+.b4-boundary span {
+  color: var(--muted);
+}
+
+.b4-watchlist-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.b4-watchlist-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.b4-watchlist-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.b4-watchlist-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 .load-error {
   max-width: 760px;
   margin: 32px auto;
@@ -608,6 +649,7 @@ th {
   .summary-grid,
   .charts,
   .report-grid,
+  .b4-watchlist-grid,
   .filters {
     grid-template-columns: 1fr 1fr;
   }
@@ -626,6 +668,7 @@ th {
   .summary-grid,
   .charts,
   .report-grid,
+  .b4-watchlist-grid,
   .filters {
     grid-template-columns: 1fr;
   }

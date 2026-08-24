@@ -1,5 +1,13 @@
 const DATASETS = [
   {
+    label: "10496只全量 v2 规则版（无AI）",
+    url: "./data/screening/investment_screen_v2_investable_all_summary.csv",
+    format: "v2_summary",
+    reportUrl: "./data/reports/investment_screen_v2_investable_all_manifest.json",
+    reportFormat: "v2_manifest",
+    defaultSort: { key: "规则质量分", direction: "desc" },
+  },
+  {
     label: "优质池排序（任一轨道看好）",
     url: "./data/screening/quality_pool_investable_all.csv",
     reportUrl: "./data/reports/stability_report_investable_all.txt",
@@ -116,13 +124,38 @@ const baseColumns = [
   "详情",
 ];
 
-const optionalColumns = ["综合优质分", "优质池等级", "入选来源"];
+const optionalColumns = [
+  "综合优质分",
+  "优质池等级",
+  "行业相对质量分",
+  "资本效率分",
+  "行业因子模型",
+  "入选来源",
+  "v2风险状态",
+  "v2当前趋势",
+  "v2估值状态",
+  "v2估值置信度",
+  "v2策略池",
+  "v2池资格",
+  "v2年报as-of",
+  "v2季度as-of",
+  "v2价格as-of",
+  "v2证据状态",
+  "v2质量置信度",
+  "v2可评分权重",
+  "v2排名资格",
+  "v2池内排名",
+];
 
 const columnHelp = {
   数据质量分:
     "衡量财务数据本身是否够完整。先统计可用完整年度：收入、净利润、ROE或股东权益、资产负债表锚点都具备才算完整年度。US：6年及以上为High，3-5年为Medium；CN：8年及以上为High，5-7年为Medium。分数按完整年度折算，数据不足会降为0。",
   规则质量分:
     "衡量公司财务质量，不等同于排雷结果。基础分45；数据质量High加5；ROE达到行业优秀线加22、基本线加8，低于基本线扣10；ROE稳定加8，波动或利润波动会扣分；近5年无亏损加6；经营现金流持续为正加12；自由现金流整体为正加6；资产负债率、营收增长按行业模型加减分。最后限制在0-100，并映射为优质候选、可跟踪、谨慎观察或排除。",
+  行业相对质量分:
+    "把股票放回同市场、同行业模型中比较。参考MSCI/S&P质量因子，按行业侧重盈利、稳定、杠杆、现金流、成长和估值。样本不足时退到同市场或全局分位数。",
+  资本效率分:
+    "判断高ROE是否有现金含量、是否依赖杠杆。当前用现金转换率、FCF/净利润、ROA或近似ROA、杠杆依赖度综合评估；缺少字段时会保守降为近似判断。",
 };
 
 const columnWidths = {
@@ -142,7 +175,24 @@ const columnWidths = {
   分数: "72px",
   综合优质分: "110px",
   优质池等级: "112px",
+  行业相对质量分: "132px",
+  资本效率分: "112px",
+  行业因子模型: "136px",
   入选来源: "180px",
+  v2风险状态: "112px",
+  v2当前趋势: "112px",
+  v2估值状态: "112px",
+  v2估值置信度: "112px",
+  v2策略池: "120px",
+  v2池资格: "96px",
+  "v2年报as-of": "120px",
+  "v2季度as-of": "120px",
+  "v2价格as-of": "120px",
+  v2证据状态: "112px",
+  v2质量置信度: "112px",
+  v2可评分权重: "112px",
+  v2排名资格: "112px",
+  v2池内排名: "104px",
   规则质量评级: "126px",
   规则质量分: "118px",
   AI评级: "110px",
@@ -227,6 +277,22 @@ function prepareRows(items) {
       row["AI理由"],
       row["AI风险"],
       row["AI关注点"],
+      row["AI护城河等级"],
+      row["AI护城河类型"],
+      row["AI护城河证据"],
+      row["AI护城河反证"],
+      row["AI证据等级"],
+      row["AI定价权判断"],
+      row["AI客户粘性判断"],
+      row["AI竞争强度判断"],
+      row["AI资本效率判断"],
+      row["AI管理层资本配置"],
+      row["AI领导人与文化证据"],
+      row["AI管理层文化观察"],
+      row["AI外部验证需求"],
+      row["AI护城河方法来源"],
+      row["行业相对理由"],
+      row["资本效率理由"],
       row["综合观察"],
     ]
       .filter(Boolean)
@@ -270,6 +336,86 @@ function fillSelect(id, values, labelFn = (value) => value) {
     option.textContent = labelFn(value);
     select.appendChild(option);
   });
+}
+
+function prepareV2Rows(payload) {
+  const items = Array.isArray(payload) ? payload : [payload];
+  const rows = items.map((item) => {
+    const data = item.data || {};
+    const risk = item.risk || {};
+    const quality = item.quality || {};
+    const trend = item.trend || {};
+    const valuation = item.valuation || {};
+    const valuationResult = valuation.result || {};
+    const routing = item.routing || {};
+    const pool = item.pool || {};
+    const evidence = item.evidence || {};
+    const status = risk.status === "pass" ? "通过" : risk.status === "watch" || risk.status === "turnaround" ? "警惕" : risk.status === "special_analysis" ? "需专项分析" : risk.status === "exclude" ? "排除" : "数据不足";
+    return {
+      股票: item.symbol || "",
+      市场: item.market || "",
+      名称: item.company?.name || item.name || "",
+      行业模型: routing.route || "",
+      "数据年数": data.history_years ?? "",
+      "数据质量": data.confidence || "未知",
+      结果: status,
+      分数: risk.score ?? "",
+      "规则质量评级": quality.grade || "数据不足",
+      "规则质量分": quality.score ?? "",
+      原因: (risk.fatal_flags || []).join("；"),
+      v2风险状态: risk.status || "",
+      v2当前趋势: trend.state || "",
+      v2估值状态: valuationResult.status || valuation.state || "indeterminate",
+      v2估值置信度: valuationResult.valuation_confidence || valuation.confidence || "D",
+      v2策略池: pool.pool || routing.route || "none",
+      v2池资格: pool.eligible === true ? "是" : "否",
+      "v2年报as-of": data.annual_data_as_of || "",
+      "v2季度as-of": data.quarterly_data_as_of || "",
+      "v2价格as-of": data.price_as_of || "",
+      v2证据状态: evidence.status || (evidence.ai ? "validated" : "not_requested"),
+      "质量理由": `覆盖通过=${quality.minimum_coverage_passed ? "是" : "否"}；缺失组件=${(quality.missing_components || []).join("、") || "无"}`,
+      "综合观察": JSON.stringify({ valuation: valuationResult, pool, blocking_issues: data.blocking_issues || [] }, null, 2),
+    };
+  });
+  return prepareRows(rows);
+}
+
+function prepareV2SummaryRows(items) {
+  const rows = items.map((item) => {
+    const status = item.risk_status === "pass" ? "通过" : item.risk_status === "watch" || item.risk_status === "turnaround" ? "警惕" : item.risk_status === "special_analysis" ? "需专项分析" : item.risk_status === "exclude" ? "排除" : "数据不足";
+    return {
+      股票: item.symbol || "",
+      市场: item.market || "",
+      名称: item.name || "",
+      行业模型: item.route || "",
+      "数据年数": item.history_years || "",
+      "数据质量": item.data_confidence || "未知",
+      结果: status,
+      分数: item.risk_score ?? "",
+      "规则质量评级": item.quality_grade || "not_available",
+      "规则质量分": item.quality_score ?? "",
+      原因: item.blocking_issues || "",
+      v2风险状态: item.risk_status || "",
+      v2当前趋势: item.trend_state || "",
+      v2估值状态: item.valuation_status || "indeterminate",
+      v2估值置信度: item.valuation_confidence || "D",
+      v2策略池: item.pool || "none",
+      v2池资格: item.pool_eligible === "True" ? "是" : "否",
+      "v2年报as-of": item.annual_data_as_of || "",
+      "v2季度as-of": item.quarterly_data_as_of || "",
+      "v2价格as-of": item.price_as_of || "",
+      v2证据状态: item.evidence_status || "not_requested",
+      v2质量置信度: item.quality_confidence || "D",
+      v2可评分权重: item.quality_scored_weight || "",
+      v2排名资格: item.ranking_eligible === "True" ? "是" : "否",
+      v2池内排名: item.rank_within_pool || "",
+      "质量理由": `质量置信度=${item.quality_confidence || "D"}；可评分权重=${item.quality_scored_weight || "-"}`,
+      "综合观察": [item.blocking_issues, item.route_blockers, item.pool_blockers].filter(Boolean).join("；") || "无阻断项",
+      "数据版本": "investment_screen_v2_rules_no_ai",
+      "AI评测状态": "未启用（规则版）",
+    };
+  });
+  return prepareRows(rows);
 }
 
 function fillDatasetSelect() {
@@ -396,7 +542,7 @@ function valueOf(row, key) {
 
 function tableColumns() {
   const available = new Set(rows.flatMap((row) => Object.keys(row)));
-  const detailless = baseColumns.filter((column) => column !== "详情");
+  const detailless = baseColumns.filter((column) => column !== "详情" && available.has(column));
   const extras = optionalColumns.filter((column) => available.has(column));
   return [...detailless, ...extras, "详情"];
 }
@@ -465,12 +611,13 @@ async function loadDataset(datasetIndex = 0) {
   if (!response.ok) {
     throw new Error(`无法读取结果表：${dataset.url}`);
   }
-  rows = prepareRows(parseCsv(await response.text()));
+  const raw = await response.text();
+  rows = dataset.format === "v2" ? prepareV2Rows(JSON.parse(raw)) : dataset.format === "v2_summary" ? prepareV2SummaryRows(parseCsv(raw)) : prepareRows(parseCsv(raw));
   filteredRows = rows;
   currentPage = 1;
-  sortState = rows.some((row) => row["综合优质分"])
+  sortState = dataset.defaultSort || (rows.some((row) => row["综合优质分"])
     ? { key: "综合优质分", direction: "desc" }
-    : { key: "分数", direction: "asc" };
+    : { key: "分数", direction: "asc" });
   resetFilterInputs();
   resetFilterOptions();
   applyFilters();
@@ -478,7 +625,7 @@ async function loadDataset(datasetIndex = 0) {
   if (download) download.href = dataset.url;
   const subtitle = document.getElementById("subtitle");
   if (subtitle) subtitle.textContent = `当前结果表：${dataset.label}`;
-  await loadReport(dataset.reportUrl);
+  if (dataset.reportUrl) await loadReport(dataset.reportUrl, dataset.reportFormat);
 }
 
 function applyDetailSearch(action, value) {
@@ -655,13 +802,39 @@ function openDetail(index) {
             <div class="detail-grid">
               ${detailItem("综合优质分", row["综合优质分"])}
               ${detailItem("优质池等级", row["优质池等级"])}
+              ${detailItem("行业相对质量分", row["行业相对质量分"])}
+              ${detailItem("资本效率分", row["资本效率分"])}
+              ${detailItem("行业因子模型", row["行业因子模型"])}
               ${detailItem("入选来源", row["入选来源"])}
               ${detailItem("风险扣分", row["风险扣分"])}
             </div>
             ${detailText("排序理由", valueOf(row, "优质排序理由"))}
+            ${detailText("行业相对理由", valueOf(row, "行业相对理由"))}
+            ${detailText("资本效率理由", valueOf(row, "资本效率理由"))}
           </section>`
         : ""
     }
+
+    <section class="detail-section">
+      <h3>投资筛选 v2 主事实</h3>
+      <div class="detail-grid">
+        ${detailItem("风险状态", row["v2风险状态"])}
+        ${detailItem("当前趋势", row["v2当前趋势"])}
+        ${detailItem("估值状态", row["v2估值状态"])}
+        ${detailItem("估值置信度", row["v2估值置信度"])}
+        ${detailItem("策略池", row["v2策略池"])}
+        ${detailItem("池资格", row["v2池资格"])}
+        ${detailItem("证据状态", row["v2证据状态"])}
+        ${detailItem("质量置信度", row["v2质量置信度"])}
+        ${detailItem("可评分权重", row["v2可评分权重"])}
+        ${detailItem("排名资格", row["v2排名资格"])}
+        ${detailItem("池内排名", row["v2池内排名"])}
+        ${detailItem("年度 as-of", row["v2年报as-of"])}
+        ${detailItem("季度 as-of", row["v2季度as-of"])}
+        ${detailItem("价格 as-of", row["v2价格as-of"])}
+      </div>
+      ${detailText("v2估值/池阻断", valueOf(row, "综合观察"))}
+    </section>
 
     <section class="detail-section">
       <h3>规则排雷</h3>
@@ -686,6 +859,7 @@ function openDetail(index) {
     <section class="detail-section">
       <h3>AI优质度</h3>
       <div class="detail-grid">
+        ${detailItem("AI评测状态", row["AI评测状态"] || (aiRating ? "已评测" : "未评测"))}
         ${detailItem("AI评级", aiRating)}
         ${detailItem("AI置信度", row["AI置信度"])}
         ${detailItem("AI模型", row["AI模型"] || row["AI复核模型"])}
@@ -693,6 +867,20 @@ function openDetail(index) {
       ${detailText("AI理由", aiReason)}
       ${detailText("AI风险", aiRisk)}
       ${detailText("AI关注点", valueOf(row, "AI关注点"))}
+      ${detailText("AI护城河等级", valueOf(row, "AI护城河等级"))}
+      ${detailText("AI护城河类型", valueOf(row, "AI护城河类型"))}
+      ${detailText("AI护城河证据", valueOf(row, "AI护城河证据"))}
+      ${detailText("AI护城河反证", valueOf(row, "AI护城河反证"))}
+      ${detailText("AI证据等级", valueOf(row, "AI证据等级"))}
+      ${detailText("AI定价权判断", valueOf(row, "AI定价权判断"))}
+      ${detailText("AI客户粘性判断", valueOf(row, "AI客户粘性判断"))}
+      ${detailText("AI竞争强度判断", valueOf(row, "AI竞争强度判断"))}
+      ${detailText("AI资本效率判断", valueOf(row, "AI资本效率判断"))}
+      ${detailText("AI管理层资本配置", valueOf(row, "AI管理层资本配置"))}
+      ${detailText("AI领导人与文化证据", valueOf(row, "AI领导人与文化证据"))}
+      ${detailText("AI管理层文化观察", valueOf(row, "AI管理层文化观察"))}
+      ${detailText("AI外部验证需求", valueOf(row, "AI外部验证需求"))}
+      ${detailText("AI护城河方法来源", valueOf(row, "AI护城河方法来源"))}
     </section>
 
     <section class="detail-section">
@@ -769,13 +957,34 @@ function renderReport(text) {
     .join("");
 }
 
-async function loadReport(reportUrl) {
+function renderV2Manifest(manifest) {
+  document.getElementById("reportStatus").textContent = "已加载 · 无AI评测";
+  const risk = manifest.counts?.risk_status || {};
+  const trend = manifest.counts?.trend_state || {};
+  const values = [
+    ["股票总数", manifest.stock_count],
+    ["风险通过", risk.pass],
+    ["需要关注", risk.watch],
+    ["专项分析", risk.special_analysis],
+    ["数据不足", risk.data_insufficient],
+    ["趋势不可用", trend.not_available],
+    ["正式排名", manifest.ranked_count],
+    ["AI/API调用", manifest.network_calls],
+  ];
+  document.getElementById("reportGrid").innerHTML = values
+    .map(([label, value]) => `<div class="report-item"><strong>${label}</strong><span>${value ?? "-"}</span></div>`)
+    .join("");
+}
+
+async function loadReport(reportUrl, format = "legacy") {
   const status = document.getElementById("reportStatus");
   if (status) status.textContent = "加载中";
   try {
     const response = await fetch(reportUrl);
     if (!response.ok) throw new Error(reportUrl);
-    renderReport(await response.text());
+    const text = await response.text();
+    if (format === "v2_manifest") renderV2Manifest(JSON.parse(text));
+    else renderReport(text);
   } catch (error) {
     if (status) status.textContent = "未加载";
     document.getElementById("reportGrid").innerHTML = "";
@@ -848,3 +1057,50 @@ python -m http.server 8766</code></pre>
       : "";
   document.body.innerHTML = `<main class="panel load-error"><h1>加载失败</h1><p>${escapeHtml(error.message)}</p>${fileHelp}</main>`;
 });
+
+// B4 accepts a pre-validated pure view model only.  This page never derives a
+// valuation from CSV fields and therefore cannot turn a low price/PE/PB into a
+// quality upgrade or a fabricated recommendation.
+function renderB4Watchlist(view) {
+  const status = document.getElementById("b4WatchlistStatus");
+  const grid = document.getElementById("b4WatchlistGrid");
+  if (!status || !grid) return;
+  if (!view || typeof view !== "object") {
+    status.textContent = "未载入经验证的 B4 view model";
+    grid.innerHTML = "";
+    return;
+  }
+  const valuation = view.valuation || {};
+  const freshness = view.freshness || {};
+  const state = view.watchlist_state || {};
+  const evidence = view.evidence || {};
+  const quality = view.enterprise_quality || {};
+  const calibration = view.calibration || {};
+  const calibrationData = calibration.calibration || {};
+  const calibrationCoverage = calibrationData.holdout_rates?.coverage;
+  const cards = [
+    ["四象限", view.quadrant?.label || "不可分类"],
+    ["企业质量", `${quality.band || "unknown"} / ${quality.grade || "-"}`],
+    ["证据置信度", evidence.evidence_confidence || "unknown"],
+    ["估值状态", valuation.status || "not_valuable"],
+    ["情景", Array.isArray(valuation.scenario_results) ? `${valuation.scenario_results.length} 个` : "0 个"],
+    ["价格新鲜度", freshness.price || "unknown"],
+    ["证据新鲜度", freshness.evidence || "unknown"],
+    ["观察清单", state.status || "new"],
+    ["A4 校准", calibration.status || "not_available"],
+    ["A4 覆盖率", typeof calibrationCoverage === "number" ? `${(calibrationCoverage * 100).toFixed(1)}%` : "不可用"],
+  ];
+  const blockers = Array.isArray(valuation.blocking_reasons) ? valuation.blocking_reasons : [];
+  const calibrationBlockers = Array.isArray(calibration.blocking_reasons) ? calibration.blocking_reasons : [];
+  status.textContent = blockers.length
+    ? `不可估值：${blockers.map((item) => item.code || item.message).join("；")}`
+    : calibrationBlockers.length
+      ? `A4 校准不可用：${calibrationBlockers.map((item) => item.code || item.message).join("；")}`
+      : "已载入经验证的 B4 view model";
+  grid.innerHTML = cards
+    .map(([label, value]) => `<div class="b4-watchlist-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`)
+    .join("");
+}
+
+window.renderB4Watchlist = renderB4Watchlist;
+renderB4Watchlist(window.B4_WATCHLIST_VIEW);

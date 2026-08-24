@@ -3,7 +3,8 @@
 This is the static site bundle for GitHub Pages.
 
 - Entry: index.html
-- Default dataset: data/screening/dual_track_investable_all_ai_quality_all.csv
+- Default dataset: data/screening/investment_screen_v2_investable_all_summary.csv
+- The default dataset is the deterministic v2 rules result; AI evaluation is not enabled.
 - This bundle includes only frontend files and public CSV/TXT files required for browsing.
 - It does not include API keys, cache files, collection scripts, or console logs.
 

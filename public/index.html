@@ -10,7 +10,7 @@
     <header class="topbar">
       <div>
         <h1>财务排雷检阅台</h1>
-        <p id="subtitle">优先读取 data/screening/dual_track_investable_all_ai_quality_all.csv；找不到时回退到小样本结果</p>
+        <p id="subtitle">默认展示最新 investment_screen_v2 全量规则结果（无AI评测）</p>
       </div>
       <div class="actions">
         <label class="dataset-picker">
@@ -18,11 +18,24 @@
           <select id="datasetSelect"></select>
         </label>
         <button id="resetFilters" type="button">重置筛选</button>
-        <a id="downloadCsv" href="./data/screening/dual_track_investable_all_ai_quality_all.csv" download>下载双轨 CSV</a>
+        <a id="downloadCsv" href="./data/screening/investment_screen_v2_investable_all_summary.csv" download>下载当前数据</a>
       </div>
     </header>
 
     <main>
+      <section class="b4-boundary" aria-label="B4 research boundary">
+        <strong>研究辅助，不构成投资建议</strong>
+        <span>企业质量、证据置信度与估值分别展示；没有可验证的估值输入时，不显示估值结论。</span>
+      </section>
+
+      <section class="panel b4-watchlist-panel" id="b4WatchlistPanel">
+        <div class="panel-head">
+          <h2>质量 × 估值观察清单</h2>
+          <span id="b4WatchlistStatus">未载入经验证的 B4 view model</span>
+        </div>
+        <div class="b4-watchlist-grid" id="b4WatchlistGrid"></div>
+      </section>
+
       <section class="summary-grid" id="summaryCards"></section>
 
       <section class="panel">

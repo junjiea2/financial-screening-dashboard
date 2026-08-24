@@ -1,0 +1,76 @@
+{
+  "schema_version": "investment_screen_v2.universe_manifest.v1",
+  "ruleset_version": "investment_screen_v2.2026-08-23",
+  "started_at": "2026-08-24T02:50:04.954647Z",
+  "completed_at": "2026-08-24T02:50:25.527995Z",
+  "input": {
+    "path": "data\\normalized\\full_financials_investable_all.csv",
+    "sha256": "973994bcd8c2620567a03dd7627d88e04ab49e561dd5eed630c7da162f3f004d",
+    "bytes": 11956080,
+    "file_modified_at": "2026-05-20T01:48:54.403703Z"
+  },
+  "stock_count": 10496,
+  "ranking_eligible_count": 0,
+  "ranked_count": 0,
+  "counts": {
+    "risk_status": {
+      "special_analysis": 824,
+      "watch": 5633,
+      "pass": 4002,
+      "data_insufficient": 37
+    },
+    "quality_grade": {
+      "Q3": 1581,
+      "not_available": 6075,
+      "Q5": 291,
+      "Q4": 1236,
+      "Q2": 1198,
+      "Q1": 115
+    },
+    "trend_state": {
+      "not_available": 10496
+    },
+    "route": {
+      "financial_special": 562,
+      "none": 9009,
+      "real_estate_special": 262,
+      "cyclical": 663
+    },
+    "valuation_status": {
+      "not_applicable": 824,
+      "indeterminate": 9672
+    },
+    "pool": {
+      "financial_special": 562,
+      "none": 9009,
+      "real_estate_special": 262,
+      "cyclical": 663
+    },
+    "data_confidence": {
+      "C": 10459,
+      "D": 37
+    },
+    "evidence_status": {
+      "not_requested": 10496
+    }
+  },
+  "missing_as_of": {
+    "annual_data_as_of": 10496,
+    "quarterly_data_as_of": 10496,
+    "price_as_of": 10496
+  },
+  "network_calls": 0,
+  "public_data_modified": false,
+  "outputs": {
+    "jsonl_gzip": {
+      "path": "data\\screening\\investment_screen_v2_investable_all.jsonl.gz",
+      "sha256": "218aaa829a7aab1c00b4e4c421b01dd34f6c6e6668c2b13585573597b14d67f1",
+      "bytes": 5591114
+    },
+    "summary_csv": {
+      "path": "data\\screening\\investment_screen_v2_investable_all_summary.csv",
+      "sha256": "9399ae4d004aa0ab81199964d1e3be8874d0fbadfbd570521854d6a06cbaa722",
+      "bytes": 2892351
+    }
+  }
+}
